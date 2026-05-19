@@ -4,8 +4,6 @@ Localagent supports structured final answers for workflows that need machine-rea
 
 Example: inspect a GitHub PR with Pi tools, then classify whether the PR is related to local models.
 
-The bundled PR classifier schema uses an `interest` tag from `i0` to `i4`, where `i0` is highest interest and `i4` is lowest interest.
-
 ## How It Works
 
 Use `--final-schema <path>` or the shorter `--schema <path>` in Pi print mode (`-p` or `--print`).
@@ -24,19 +22,19 @@ This keeps the agent loop freeform while making the final answer structured.
 ## CLI
 
 ```bash
-localagent --final-schema ./schemas/pr-local-model-classifier.schema.json -p "inspect https://github.com/openclaw/openclaw/pull/80568 and classify it"
+localagent --final-schema ./schema.json -p "inspect https://github.com/openclaw/openclaw/pull/80568 and classify it"
 ```
 
 Alias:
 
 ```bash
-localagent --schema ./schemas/pr-local-model-classifier.schema.json -p "inspect the PR and classify it"
+localagent --schema ./schema.json -p "inspect the PR and classify it"
 ```
 
 You can also set a default schema with:
 
 ```bash
-export LOCALAGENT_FINAL_SCHEMA=./schemas/pr-local-model-classifier.schema.json
+export LOCALAGENT_FINAL_SCHEMA=./schema.json
 ```
 
 ## Tool Allow Lists
