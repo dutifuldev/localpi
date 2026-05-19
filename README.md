@@ -76,6 +76,12 @@ Pass a Pi flag that localagent also owns after `--`:
 localagent --model gemma-local -- --model some-pi-level-value
 ```
 
+## Structured Output
+
+For workflows that need machine-readable final answers, use a final-only schema pass: let Pi use tools normally, then force JSON schema on the final answer and validate it.
+
+See [docs/structured-output.md](docs/structured-output.md).
+
 ## Options
 
 - `--base-url <url>`: local OpenAI-compatible endpoint. Default: `http://127.0.0.1:1234/v1`
