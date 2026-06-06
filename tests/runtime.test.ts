@@ -86,6 +86,52 @@ describe("runtime resolution", () => {
     await waitForDead(child.pid ?? 0);
   });
 
+  it("stops owned wrapper processes that do not include llama-server in argv", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const child = spawnFakeOwnedProcess("wrapper-command", modelPath);
+    await writeMetadata(stateDir, {
+      pid: child.pid ?? 0,
+      baseUrl: "http://127.0.0.1:1/v1",
+      modelId: "custom-model",
+      modelPath,
+      contextWindow: 4096,
+      serverCommand: "wrapper-command",
+      host: "127.0.0.1",
+      port: 1
+    });
+
+    await expect(stopManagedLlamaServer({ ...options(), stateDir })).resolves.toContain("stopped");
+    await waitForDead(child.pid ?? 0);
+  });
+
+  it("does not report the managed port as an LM Studio warning", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const child = spawnFakeLlamaServer(modelPath);
+    await writeMetadata(stateDir, {
+      pid: child.pid ?? 0,
+      baseUrl: "http://127.0.0.1:1234/v1",
+      modelId: "custom-model",
+      modelPath,
+      contextWindow: 4096,
+      serverCommand: "llama-server",
+      host: "127.0.0.1",
+      port: 1234
+    });
+
+    await expect(
+      ensureLlamaServer(
+        {
+          ...options(),
+          stateDir,
+          port: 1234,
+          serverCommand: "/definitely/missing/localpi-llama-server"
+        },
+        { id: "different-model", modelPath, contextWindow: 4096 }
+      )
+    ).rejects.toThrow(/failed to start llama-server/);
+    await waitForDead(child.pid ?? 0);
+  });
+
   it("does not reuse managed llama-server metadata with mismatched explicit context", async () => {
     const { stateDir, modelPath } = await tempRuntimeState();
     const baseUrl = await startModelServer("custom-model", 32768);
@@ -278,9 +324,13 @@ describe("runtime resolution", () => {
   }
 
   function spawnFakeLlamaServer(modelPath: string): ChildProcess {
+    return spawnFakeOwnedProcess("llama-server", modelPath);
+  }
+
+  function spawnFakeOwnedProcess(commandMarker: string, modelPath: string): ChildProcess {
     const child = spawn(
       process.execPath,
-      ["-e", "setInterval(() => {}, 1000)", "llama-server", modelPath],
+      ["-e", "setInterval(() => {}, 1000)", commandMarker, modelPath],
       { stdio: "ignore" }
     );
     children.push(child);

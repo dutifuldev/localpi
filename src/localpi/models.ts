@@ -53,7 +53,7 @@ export async function resolveLlamaModel(
   if (isGgufPath(expanded)) {
     return customPathModel(expanded, chatTemplateOverride);
   }
-  const alias = (await allAliases(home)).find((entry) => entry.name === requested);
+  const alias = findRequestedAlias(await allAliases(home), requested);
   if (alias === undefined) {
     throw new Error(
       `unknown llama-server model alias ${requested}; pass a GGUF path or use --list`
@@ -78,6 +78,16 @@ export async function resolveLlamaModel(
         (await firstExisting((alias.chatTemplates ?? []).map(expandTemplate(home))))
     )
   };
+}
+
+function findRequestedAlias(
+  aliases: readonly ModelAlias[],
+  requested: string
+): ModelAlias | undefined {
+  return (
+    aliases.find((entry) => entry.name === requested) ??
+    aliases.find((entry) => entry.id === requested)
+  );
 }
 
 export function defaultLlamaModelName(): string {

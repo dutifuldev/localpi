@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -28,7 +28,7 @@ export async function ensureLlamaServer(
   model: LlamaServerModel
 ): Promise<LlamaServerRuntime> {
   const baseUrl = llamaBaseUrl(options);
-  const warnings = await lmStudioWarnings();
+  const warnings = await lmStudioWarnings(options);
   const existingResult = await handleExistingServer(options, model, baseUrl, warnings);
   if (existingResult.runtime !== undefined) {
     return existingResult.runtime;
@@ -402,13 +402,11 @@ async function metadataProcessMatches(info: ServerMetadata): Promise<boolean> {
   if (!isProcessAlive(info.pid)) {
     return false;
   }
-  try {
-    const raw = await readFile(`/proc/${String(info.pid)}/cmdline`, "utf8");
-    const command = raw.replaceAll("\u0000", " ");
-    return command.includes(info.modelPath) && command.includes("llama-server");
-  } catch {
+  if (info.modelPath === "" || info.serverCommand === "") {
     return false;
   }
+  const command = await processCommand(info.pid);
+  return command === undefined ? true : commandMatchesMetadata(command, info);
 }
 
 function parseMetadata(raw: string): ServerMetadata {
@@ -573,12 +571,67 @@ function startupTimeoutMs(): number {
   return raw === undefined ? 120000 : Number.parseInt(raw, 10);
 }
 
-async function lmStudioWarnings(): Promise<readonly string[]> {
+async function lmStudioWarnings(options: LocalpiOptions): Promise<readonly string[]> {
+  if (usesLmStudioProbeEndpoint(options)) {
+    return [];
+  }
   const models = await probe("http://127.0.0.1:1234/v1", 1000);
   if (models === undefined || models.length === 0) {
     return [];
   }
   return [`LM Studio also reports loaded models: ${models.map((model) => model.id).join(", ")}`];
+}
+
+async function processCommand(pid: number): Promise<string | undefined> {
+  const procCommand = await procCommandLine(pid);
+  return procCommand ?? psCommandLine(pid);
+}
+
+async function procCommandLine(pid: number): Promise<string | undefined> {
+  try {
+    const raw = await readFile(`/proc/${String(pid)}/cmdline`, "utf8");
+    return raw.replaceAll("\u0000", " ");
+  } catch {
+    return undefined;
+  }
+}
+
+async function psCommandLine(pid: number): Promise<string | undefined> {
+  if (process.platform === "win32") {
+    return undefined;
+  }
+  return new Promise((resolve) => {
+    execFile("ps", ["-p", String(pid), "-o", "command="], { timeout: 1000 }, (error, stdout) => {
+      if (error !== null) {
+        resolve(undefined);
+        return;
+      }
+      const command = stdout.trim();
+      resolve(command.length === 0 ? undefined : command);
+    });
+  });
+}
+
+function commandMatchesMetadata(command: string, info: ServerMetadata): boolean {
+  return (
+    command.includes(info.modelPath) &&
+    commandMarkers(info.serverCommand).some((marker) => command.includes(marker))
+  );
+}
+
+function commandMarkers(serverCommand: string): readonly string[] {
+  return [serverCommand, path.basename(serverCommand), "llama-server"].filter(
+    (marker, index, markers) => marker.length > 0 && markers.indexOf(marker) === index
+  );
+}
+
+function usesLmStudioProbeEndpoint(options: LocalpiOptions): boolean {
+  const endpoint = managedEndpoint(options);
+  return endpoint.port === 1234 && localHostnames().includes(endpoint.host);
+}
+
+function localHostnames(): readonly string[] {
+  return ["127.0.0.1", "localhost", "0.0.0.0", "::1"];
 }
 
 function assertSafeToStart(warnings: readonly string[]): void {

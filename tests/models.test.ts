@@ -54,6 +54,13 @@ describe("model aliases", () => {
         modelPath,
         contextWindow: 8192
       });
+      await expect(resolveLlamaModel("custom-id", undefined, dir)).resolves.toMatchObject({
+        source: "alias",
+        name: "custom",
+        id: "custom-id",
+        modelPath,
+        contextWindow: 8192
+      });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
