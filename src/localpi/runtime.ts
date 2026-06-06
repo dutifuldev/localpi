@@ -1,8 +1,8 @@
 import { resolveLocalModel } from "../llm/openai.js";
 import {
   ensureLlamaServer,
+  getManagedLlamaServerMetadata,
   getLlamaServerModels,
-  isManagedLlamaServerActive,
   llamaBaseUrl,
   llamaServerStatus,
   stopManagedLlamaServer
@@ -101,6 +101,36 @@ async function existingLlamaRuntime(
   options: LocalpiOptions,
   requested: string
 ): Promise<RuntimeConnection | undefined> {
+  const match = await existingModelMatch(options, requested);
+  if (match === undefined) {
+    return undefined;
+  }
+  const managed = await getManagedLlamaServerMetadata(options);
+  const reportedContextWindow = managed?.contextWindow ?? match.info?.contextWindow;
+  if (shouldRestartManagedForContext(options, managed, reportedContextWindow)) {
+    return undefined;
+  }
+  assertCompatibleRuntimeContext(options, match.modelId, reportedContextWindow);
+  return {
+    runtime: managed !== undefined ? "llama-server" : "llama-server/external",
+    baseUrl: llamaBaseUrl(options),
+    model: match.modelId,
+    availableModels: match.models.map((model) => model.id),
+    warnings: [],
+    ...optionalContextWindow(options.contextWindow ?? reportedContextWindow)
+  };
+}
+
+type ExistingModelMatch = {
+  readonly models: readonly { readonly id: string; readonly contextWindow?: number }[];
+  readonly modelId: string;
+  readonly info: { readonly id: string; readonly contextWindow?: number } | undefined;
+};
+
+async function existingModelMatch(
+  options: LocalpiOptions,
+  requested: string
+): Promise<ExistingModelMatch | undefined> {
   const models = await getLlamaServerModels(options);
   if (models === undefined) {
     return undefined;
@@ -109,15 +139,40 @@ async function existingLlamaRuntime(
   if (modelId === undefined) {
     return undefined;
   }
-  const info = models.find((model) => model.id === modelId);
   return {
-    runtime: (await isManagedLlamaServerActive(options)) ? "llama-server" : "llama-server/external",
-    baseUrl: llamaBaseUrl(options),
-    model: modelId,
-    availableModels: models.map((model) => model.id),
-    warnings: [],
-    ...optionalContextWindow(options.contextWindow ?? info?.contextWindow)
+    models,
+    modelId,
+    info: models.find((model) => model.id === modelId)
   };
+}
+
+function shouldRestartManagedForContext(
+  options: LocalpiOptions,
+  managed: Awaited<ReturnType<typeof getManagedLlamaServerMetadata>>,
+  reportedContextWindow: number | undefined
+): boolean {
+  return (
+    managed !== undefined &&
+    options.contextWindow !== undefined &&
+    reportedContextWindow !== undefined &&
+    reportedContextWindow !== options.contextWindow
+  );
+}
+
+function assertCompatibleRuntimeContext(
+  options: LocalpiOptions,
+  modelId: string,
+  reportedContextWindow: number | undefined
+): void {
+  if (
+    options.contextWindow !== undefined &&
+    reportedContextWindow !== undefined &&
+    reportedContextWindow !== options.contextWindow
+  ) {
+    throw new Error(
+      `server at ${llamaBaseUrl(options)} reports ${modelId} ctx=${String(reportedContextWindow)}, but --ctx ${String(options.contextWindow)} was requested`
+    );
+  }
 }
 
 async function existingModelId(

@@ -29,16 +29,9 @@ export async function ensureLlamaServer(
 ): Promise<LlamaServerRuntime> {
   const baseUrl = llamaBaseUrl(options);
   const warnings = await lmStudioWarnings();
-  const owned = await readActiveMetadataFile(options);
-  const existing = await getLlamaServerModels(options);
-  if (existing !== undefined) {
-    if (existing.some((entry) => entry.id === model.id)) {
-      return existingModelRuntime(model, baseUrl, existing, owned !== undefined, warnings);
-    }
-    if (owned === undefined) {
-      return rejectExternalModelConflict(baseUrl, existing, model.id);
-    }
-    await stopManagedLlamaServer(options);
+  const existingResult = await handleExistingServer(options, model, baseUrl, warnings);
+  if (existingResult.runtime !== undefined) {
+    return existingResult.runtime;
   }
 
   assertSafeToStart(warnings);
@@ -55,6 +48,92 @@ export async function ensureLlamaServer(
   };
 }
 
+type ExistingServerResult = {
+  readonly runtime?: LlamaServerRuntime;
+};
+
+type ExistingServerState = {
+  readonly existing: readonly ModelInfo[] | undefined;
+  readonly owned: ManagedLlamaServerMetadata | undefined;
+};
+
+async function handleExistingServer(
+  options: LocalpiOptions,
+  model: LlamaServerModel,
+  baseUrl: string,
+  warnings: readonly string[]
+): Promise<ExistingServerResult> {
+  const state = await existingServerState(options, baseUrl);
+  if (state.existing === undefined) {
+    return {};
+  }
+  const matchingModel = state.existing.find((entry) => entry.id === model.id);
+  if (matchingModel !== undefined) {
+    return handleMatchingExistingServer(
+      options,
+      model,
+      baseUrl,
+      warnings,
+      state.existing,
+      state.owned,
+      matchingModel
+    );
+  }
+  if (state.owned === undefined) {
+    return rejectExternalModelConflict(baseUrl, state.existing, model.id);
+  }
+  await stopManagedLlamaServer(options);
+  return {};
+}
+
+async function existingServerState(
+  options: LocalpiOptions,
+  baseUrl: string
+): Promise<ExistingServerState> {
+  const owned = await readActiveMetadataFile(options);
+  const existing = await getLlamaServerModels(options);
+  if (owned !== undefined && shouldStopOwnedBeforeStart(owned, existing, baseUrl)) {
+    await stopManagedLlamaServer(options);
+    return { existing, owned: undefined };
+  }
+  return { existing, owned };
+}
+
+function shouldStopOwnedBeforeStart(
+  owned: ManagedLlamaServerMetadata,
+  existing: readonly ModelInfo[] | undefined,
+  baseUrl: string
+): boolean {
+  return existing === undefined || owned.baseUrl !== baseUrl;
+}
+
+async function handleMatchingExistingServer(
+  options: LocalpiOptions,
+  model: LlamaServerModel,
+  baseUrl: string,
+  warnings: readonly string[],
+  existing: readonly ModelInfo[],
+  owned: ManagedLlamaServerMetadata | undefined,
+  matchingModel: ModelInfo
+): Promise<ExistingServerResult> {
+  const contextWindow = requestedContextWindow(options, model);
+  if (owned !== undefined && owned.contextWindow !== contextWindow) {
+    await stopManagedLlamaServer(options);
+    return {};
+  }
+  assertCompatibleExternalContext(baseUrl, matchingModel, options.contextWindow);
+  return {
+    runtime: existingModelRuntime(
+      model,
+      baseUrl,
+      existing,
+      owned !== undefined,
+      warnings,
+      owned?.contextWindow ?? matchingModel.contextWindow
+    )
+  };
+}
+
 export async function stopManagedLlamaServer(options: LocalpiOptions): Promise<string> {
   const info = await readActiveMetadataFile(options);
   if (info === undefined) {
@@ -67,6 +146,9 @@ export async function stopManagedLlamaServer(options: LocalpiOptions): Promise<s
   if (isProcessAlive(info.pid)) {
     process.kill(info.pid, "SIGKILL");
     await waitForExit(info.pid, 2000);
+  }
+  if (isProcessAlive(info.pid)) {
+    throw new Error(`failed to stop localpi-owned llama-server pid ${String(info.pid)}`);
   }
   await rm(metadataPath(options), { force: true });
   return `stopped localpi-owned llama-server pid ${String(info.pid)}`;
@@ -98,12 +180,19 @@ export async function isManagedLlamaServerActive(options: LocalpiOptions): Promi
   return (await readActiveMetadataFile(options)) !== undefined;
 }
 
+export async function getManagedLlamaServerMetadata(
+  options: LocalpiOptions
+): Promise<ManagedLlamaServerMetadata | undefined> {
+  return readActiveMetadataFile(options);
+}
+
 function existingModelRuntime(
   model: LlamaServerModel,
   baseUrl: string,
   existing: readonly ModelInfo[],
   managed: boolean,
-  warnings: readonly string[]
+  warnings: readonly string[],
+  existingContextWindow?: number
 ): LlamaServerRuntime {
   const ids = existing.map((entry) => entry.id);
   return {
@@ -112,9 +201,7 @@ function existingModelRuntime(
     availableModels: ids,
     managed,
     warnings,
-    ...optionalContextWindow(
-      model.contextWindow ?? existing.find((entry) => entry.id === model.id)?.contextWindow
-    )
+    ...optionalContextWindow(model.contextWindow ?? existingContextWindow)
   };
 }
 
@@ -141,8 +228,39 @@ async function startManagedServer(
       detached: true,
       stdio: ["ignore", logFd, logFd]
     });
-    child.unref();
-    return child.pid ?? 0;
+    const pid = child.pid;
+    return await new Promise<number>((resolve, reject) => {
+      const cleanup = (): void => {
+        clearTimeout(timer);
+        child.off("error", onError);
+        child.off("exit", onExit);
+      };
+      const onError = (error: Error): void => {
+        cleanup();
+        reject(new Error(`failed to start llama-server: ${error.message}; see ${logPath}`));
+      };
+      const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
+        cleanup();
+        reject(
+          new Error(
+            `llama-server exited before startup completed (${exitDescription(code, signal)}); see ${logPath}`
+          )
+        );
+      };
+      const timer = setTimeout(() => {
+        cleanup();
+        if (pid === undefined) {
+          reject(
+            new Error(`failed to start llama-server: process id was unavailable; see ${logPath}`)
+          );
+          return;
+        }
+        child.unref();
+        resolve(pid);
+      }, 250);
+      child.once("error", onError);
+      child.once("exit", onExit);
+    });
   } finally {
     closeSync(logFd);
   }
@@ -214,7 +332,7 @@ function metadata(options: LocalpiOptions, model: LlamaServerModel, pid: number)
     baseUrl: llamaBaseUrl(options),
     modelId: model.id,
     modelPath: model.modelPath,
-    contextWindow: options.contextWindow ?? model.contextWindow ?? 32768,
+    contextWindow: requestedContextWindow(options, model),
     serverCommand: options.serverCommand,
     host: options.host,
     port: options.port,
@@ -222,7 +340,7 @@ function metadata(options: LocalpiOptions, model: LlamaServerModel, pid: number)
   };
 }
 
-type ServerMetadata = {
+export type ManagedLlamaServerMetadata = {
   readonly pid: number;
   readonly baseUrl: string;
   readonly modelId: string;
@@ -233,6 +351,8 @@ type ServerMetadata = {
   readonly host: string;
   readonly port: number;
 };
+
+type ServerMetadata = ManagedLlamaServerMetadata;
 
 async function writeMetadata(options: LocalpiOptions, value: ServerMetadata): Promise<void> {
   await writeFile(metadataPath(options), `${JSON.stringify(value, null, 2)}\n`, "utf8");
@@ -321,6 +441,36 @@ function isProcessAlive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+function requestedContextWindow(options: LocalpiOptions, model: LlamaServerModel): number {
+  return options.contextWindow ?? model.contextWindow ?? 32768;
+}
+
+function assertCompatibleExternalContext(
+  baseUrl: string,
+  model: ModelInfo,
+  requestedContextWindow: number | undefined
+): void {
+  if (
+    requestedContextWindow !== undefined &&
+    model.contextWindow !== undefined &&
+    model.contextWindow !== requestedContextWindow
+  ) {
+    throw new Error(
+      `server at ${baseUrl} reports ${model.id} ctx=${String(model.contextWindow)}, but --ctx ${String(requestedContextWindow)} was requested`
+    );
+  }
+}
+
+function exitDescription(code: number | null, signal: NodeJS.Signals | null): string {
+  if (code !== null) {
+    return `exit code ${String(code)}`;
+  }
+  if (signal !== null) {
+    return `signal ${signal}`;
+  }
+  return "exit status unavailable";
 }
 
 async function waitForExit(pid: number, timeoutMs: number): Promise<void> {

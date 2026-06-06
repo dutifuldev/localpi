@@ -1,16 +1,29 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { LocalpiOptions } from "../src/localpi/options.js";
+import { ensureLlamaServer } from "../src/localpi/llama-server.js";
 import { resolveRuntime } from "../src/localpi/runtime.js";
 
 describe("runtime resolution", () => {
   const servers: ReturnType<typeof createServer>[] = [];
+  const children: ChildProcess[] = [];
+  const tempDirs: string[] = [];
 
   afterEach(async () => {
+    for (const child of children) {
+      if (child.pid !== undefined && isAlive(child.pid)) {
+        child.kill("SIGKILL");
+      }
+    }
+    children.length = 0;
     await Promise.all(
       servers.map(
         (server) =>
@@ -26,6 +39,8 @@ describe("runtime resolution", () => {
       )
     );
     servers.length = 0;
+    await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+    tempDirs.length = 0;
   });
 
   it("reuses a running llama-server for auto and backend model ids", async () => {
@@ -43,11 +58,84 @@ describe("runtime resolution", () => {
     });
   });
 
-  async function startModelServer(model: string): Promise<string> {
+  it("stops active owned metadata before starting on a different endpoint", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const child = spawnFakeLlamaServer(modelPath);
+    await writeMetadata(stateDir, {
+      pid: child.pid ?? 0,
+      baseUrl: "http://127.0.0.1:1/v1",
+      modelId: "custom-model",
+      modelPath,
+      contextWindow: 4096,
+      serverCommand: "llama-server",
+      host: "127.0.0.1",
+      port: 1
+    });
+
+    await expect(
+      ensureLlamaServer(
+        {
+          ...options(),
+          stateDir,
+          baseUrl: await unusedBaseUrl(),
+          serverCommand: "/definitely/missing/localpi-llama-server"
+        },
+        { id: "custom-model", modelPath, contextWindow: 4096 }
+      )
+    ).rejects.toThrow(/failed to start llama-server|LM Studio also reports loaded models/);
+    await waitForDead(child.pid ?? 0);
+  });
+
+  it("does not reuse managed llama-server metadata with mismatched explicit context", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("custom-model", 32768);
+    const child = spawnFakeLlamaServer(modelPath);
+    await writeMetadata(stateDir, {
+      pid: child.pid ?? 0,
+      baseUrl,
+      modelId: "custom-model",
+      modelPath,
+      contextWindow: 32768,
+      serverCommand: "llama-server",
+      host: "127.0.0.1",
+      port: 1
+    });
+
+    await expect(
+      ensureLlamaServer(
+        {
+          ...options(),
+          stateDir,
+          baseUrl,
+          contextWindow: 131072,
+          serverCommand: "/definitely/missing/localpi-llama-server"
+        },
+        { id: "custom-model", modelPath, contextWindow: 32768 }
+      )
+    ).rejects.toThrow(/failed to start llama-server|LM Studio also reports loaded models/);
+    await waitForDead(child.pid ?? 0);
+  });
+
+  it("reports missing llama-server commands as controlled startup errors", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    await expect(
+      ensureLlamaServer(
+        {
+          ...options(),
+          stateDir,
+          baseUrl: await unusedBaseUrl(),
+          serverCommand: "/definitely/missing/localpi-llama-server"
+        },
+        { id: "custom-model", modelPath, contextWindow: 4096 }
+      )
+    ).rejects.toThrow(/failed to start llama-server|LM Studio also reports loaded models/);
+  });
+
+  async function startModelServer(model: string, contextWindow = 4096): Promise<string> {
     const server = createServer((request, response) => {
       if (request.url === "/v1/models") {
         response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify({ data: [{ id: model, context_length: 4096 }] }));
+        response.end(JSON.stringify({ data: [{ id: model, context_length: contextWindow }] }));
         return;
       }
       response.writeHead(404);
@@ -59,6 +147,72 @@ describe("runtime resolution", () => {
     servers.push(server);
     const address = server.address() as AddressInfo;
     return `http://127.0.0.1:${String(address.port)}/v1`;
+  }
+
+  async function unusedBaseUrl(): Promise<string> {
+    const server = createServer();
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address() as AddressInfo;
+    const baseUrl = `http://127.0.0.1:${String(address.port)}/v1`;
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+    return baseUrl;
+  }
+
+  async function tempRuntimeState(): Promise<{
+    readonly stateDir: string;
+    readonly modelPath: string;
+  }> {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-runtime-"));
+    tempDirs.push(stateDir);
+    const modelPath = path.join(stateDir, "custom-model.gguf");
+    await writeFile(modelPath, "");
+    return { stateDir, modelPath };
+  }
+
+  function spawnFakeLlamaServer(modelPath: string): ChildProcess {
+    const child = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)", "llama-server", modelPath],
+      { stdio: "ignore" }
+    );
+    children.push(child);
+    return child;
+  }
+
+  async function writeMetadata(
+    stateDir: string,
+    metadata: {
+      readonly pid: number;
+      readonly baseUrl: string;
+      readonly modelId: string;
+      readonly modelPath: string;
+      readonly contextWindow: number;
+      readonly serverCommand: string;
+      readonly host: string;
+      readonly port: number;
+    }
+  ): Promise<void> {
+    const serverDir = path.join(stateDir, "server");
+    await mkdir(serverDir, { recursive: true });
+    await writeFile(path.join(serverDir, "llama-server.json"), `${JSON.stringify(metadata)}\n`);
+  }
+
+  async function waitForDead(pid: number): Promise<void> {
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline && isAlive(pid)) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(isAlive(pid)).toBe(false);
   }
 });
 
@@ -90,4 +244,16 @@ function options(): LocalpiOptions {
     list: false,
     forwardedArgs: []
   };
+}
+
+function isAlive(pid: number): boolean {
+  if (pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
