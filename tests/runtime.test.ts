@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -131,6 +131,36 @@ describe("runtime resolution", () => {
     ).rejects.toThrow(/failed to start llama-server|LM Studio also reports loaded models/);
   });
 
+  it("stops a managed llama-server process when readiness times out", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const serverCommand = await fakeLlamaServerCommand(stateDir);
+    const previousTimeout = process.env["LOCALPI_SERVER_STARTUP_TIMEOUT_MS"];
+    process.env["LOCALPI_SERVER_STARTUP_TIMEOUT_MS"] = "100";
+    try {
+      await expect(
+        ensureLlamaServer(
+          {
+            ...options(),
+            stateDir,
+            baseUrl: await unusedBaseUrl(),
+            serverCommand
+          },
+          { id: "custom-model", modelPath, contextWindow: 4096 }
+        )
+      ).rejects.toThrow(/did not become ready|LM Studio also reports loaded models/);
+
+      if (await fileExists(path.join(stateDir, "fake-server.pid"))) {
+        const pid = Number.parseInt(
+          await readFile(path.join(stateDir, "fake-server.pid"), "utf8"),
+          10
+        );
+        await waitForDead(pid);
+      }
+    } finally {
+      restoreStartupTimeout(previousTimeout);
+    }
+  });
+
   async function startModelServer(model: string, contextWindow = 4096): Promise<string> {
     const server = createServer((request, response) => {
       if (request.url === "/v1/models") {
@@ -207,6 +237,21 @@ describe("runtime resolution", () => {
     await writeFile(path.join(serverDir, "llama-server.json"), `${JSON.stringify(metadata)}\n`);
   }
 
+  async function fakeLlamaServerCommand(stateDir: string): Promise<string> {
+    const commandPath = path.join(stateDir, "fake-llama-server");
+    await writeFile(
+      commandPath,
+      [
+        "#!/bin/sh",
+        `echo $$ > ${shellQuote(path.join(stateDir, "fake-server.pid"))}`,
+        "trap 'exit 0' TERM",
+        "while true; do sleep 1; done"
+      ].join("\n")
+    );
+    await chmod(commandPath, 0o755);
+    return commandPath;
+  }
+
   async function waitForDead(pid: number): Promise<void> {
     const deadline = Date.now() + 3000;
     while (Date.now() < deadline && isAlive(pid)) {
@@ -256,4 +301,25 @@ function isAlive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await readFile(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function restoreStartupTimeout(value: string | undefined): void {
+  if (value === undefined) {
+    Reflect.deleteProperty(process.env, "LOCALPI_SERVER_STARTUP_TIMEOUT_MS");
+    return;
+  }
+  process.env["LOCALPI_SERVER_STARTUP_TIMEOUT_MS"] = value;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }

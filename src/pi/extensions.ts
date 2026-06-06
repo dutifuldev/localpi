@@ -105,18 +105,18 @@ type TurnState = {
 };
 
 export default function localpiTokenStatus(pi: ExtensionAPI): void {
-  const turns = new Map<number, TurnState>();
+  let currentTurn: TurnState | undefined;
 
-  pi.on("turn_start", (event) => {
-    turns.set(event.turnIndex, {
+  pi.on("turn_start", () => {
+    currentTurn = {
       startedAt: Date.now(),
       estimatedOutputTokens: 0,
       lastStatusAt: 0
-    });
+    };
   });
 
   pi.on("message_update", (event, ctx) => {
-    const state = turns.get(event.turnIndex);
+    const state = currentTurn;
     if (!ctx.hasUI || state === undefined) {
       return;
     }
@@ -130,12 +130,12 @@ export default function localpiTokenStatus(pi: ExtensionAPI): void {
   });
 
   pi.on("turn_end", (event, ctx) => {
-    const state = turns.get(event.turnIndex) ?? {
+    const state = currentTurn ?? {
       startedAt: Date.now(),
       estimatedOutputTokens: 0,
       lastStatusAt: 0
     };
-    turns.delete(event.turnIndex);
+    currentTurn = undefined;
 
     if (!ctx.hasUI || event.message.role !== "assistant") {
       return;

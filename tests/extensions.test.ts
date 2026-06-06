@@ -19,6 +19,8 @@ describe("Pi extensions", () => {
       expect(approval).toContain("ctx.ui.confirm");
       expect(status).toContain("tok/s");
       expect(status).toContain("message_update");
+      expect(status).toContain("currentTurn");
+      expect(status).not.toContain("turns.get(event.turnIndex)");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

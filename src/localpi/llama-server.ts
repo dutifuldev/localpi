@@ -37,7 +37,7 @@ export async function ensureLlamaServer(
   assertSafeToStart(warnings);
   const pid = await startManagedServer(options, model);
   await writeMetadata(options, metadata(options, model, pid));
-  const models = await waitForModels(baseUrl, model.id, startupTimeoutMs());
+  const models = await waitForManagedModels(options, baseUrl, model.id);
   return {
     baseUrl,
     model: model.id,
@@ -140,11 +140,11 @@ export async function stopManagedLlamaServer(options: LocalpiOptions): Promise<s
     return "no localpi-owned llama-server metadata found";
   }
   if (isProcessAlive(info.pid)) {
-    process.kill(info.pid, "SIGTERM");
+    signalProcess(info.pid, "SIGTERM");
     await waitForExit(info.pid, 5000);
   }
   if (isProcessAlive(info.pid)) {
-    process.kill(info.pid, "SIGKILL");
+    signalProcess(info.pid, "SIGKILL");
     await waitForExit(info.pid, 2000);
   }
   if (isProcessAlive(info.pid)) {
@@ -315,6 +315,19 @@ async function waitForModels(
   throw new Error(`llama-server did not become ready for ${modelId}: ${lastError}`);
 }
 
+async function waitForManagedModels(
+  options: LocalpiOptions,
+  baseUrl: string,
+  modelId: string
+): Promise<readonly ModelInfo[]> {
+  try {
+    return await waitForModels(baseUrl, modelId, startupTimeoutMs());
+  } catch (error) {
+    await stopManagedLlamaServer(options);
+    throw error;
+  }
+}
+
 async function probe(
   baseUrl: string,
   timeoutMs: number
@@ -440,6 +453,14 @@ function isProcessAlive(pid: number): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+function signalProcess(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch {
+    // Final liveness checks decide whether a failed signal matters.
   }
 }
 
