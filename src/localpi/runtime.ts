@@ -1,6 +1,8 @@
 import { resolveLocalModel } from "../llm/openai.js";
 import {
   ensureLlamaServer,
+  getLlamaServerModels,
+  isManagedLlamaServerActive,
   llamaBaseUrl,
   llamaServerStatus,
   stopManagedLlamaServer
@@ -78,16 +80,12 @@ export function connectionStatus(connection: RuntimeConnection): string {
 
 async function resolveLlamaRuntime(options: LocalpiOptions): Promise<RuntimeConnection> {
   const requested = options.model ?? defaultLlamaModelName();
-  const alias = await findModelAlias(requested);
-  const model =
-    alias === undefined
-      ? await resolveLlamaModel(requested, options.chatTemplate)
-      : await modelForAlias(requested, options);
+  const existing = await existingLlamaRuntime(options, requested);
+  if (existing !== undefined) {
+    return existing;
+  }
   const runtime = await ensureLlamaServer(options, {
-    id: model.id,
-    modelPath: model.modelPath,
-    ...optionalContextWindow(options.contextWindow ?? model.contextWindow),
-    ...optionalChatTemplate(options.chatTemplate ?? model.chatTemplate)
+    ...llamaModelForStart(await resolveLlamaModel(requested, options.chatTemplate), options)
   });
   return {
     runtime: runtime.managed ? "llama-server" : "llama-server/external",
@@ -99,8 +97,55 @@ async function resolveLlamaRuntime(options: LocalpiOptions): Promise<RuntimeConn
   };
 }
 
-async function modelForAlias(requested: string, options: LocalpiOptions) {
-  return resolveLlamaModel(requested, options.chatTemplate);
+async function existingLlamaRuntime(
+  options: LocalpiOptions,
+  requested: string
+): Promise<RuntimeConnection | undefined> {
+  const models = await getLlamaServerModels(options);
+  if (models === undefined) {
+    return undefined;
+  }
+  const modelId = await existingModelId(requested, models);
+  if (modelId === undefined) {
+    return undefined;
+  }
+  const info = models.find((model) => model.id === modelId);
+  return {
+    runtime: (await isManagedLlamaServerActive(options)) ? "llama-server" : "llama-server/external",
+    baseUrl: llamaBaseUrl(options),
+    model: modelId,
+    availableModels: models.map((model) => model.id),
+    warnings: [],
+    ...optionalContextWindow(options.contextWindow ?? info?.contextWindow)
+  };
+}
+
+async function existingModelId(
+  requested: string,
+  models: readonly { readonly id: string }[]
+): Promise<string | undefined> {
+  if (requested === "auto") {
+    return models[0]?.id;
+  }
+  if (models.some((model) => model.id === requested)) {
+    return requested;
+  }
+  const alias = await findModelAlias(requested);
+  return alias !== undefined && models.some((model) => model.id === alias.id)
+    ? alias.id
+    : undefined;
+}
+
+function llamaModelForStart(
+  model: Awaited<ReturnType<typeof resolveLlamaModel>>,
+  options: LocalpiOptions
+) {
+  return {
+    id: model.id,
+    modelPath: model.modelPath,
+    ...optionalContextWindow(options.contextWindow ?? model.contextWindow),
+    ...optionalChatTemplate(options.chatTemplate ?? model.chatTemplate)
+  };
 }
 
 async function resolveOpenAiRuntime(

@@ -29,12 +29,19 @@ export async function ensureLlamaServer(
 ): Promise<LlamaServerRuntime> {
   const baseUrl = llamaBaseUrl(options);
   const warnings = await lmStudioWarnings();
-  const existing = await probe(baseUrl, options.timeoutMs);
+  const owned = await readActiveMetadataFile(options);
+  const existing = await getLlamaServerModels(options);
   if (existing !== undefined) {
-    return existingModelRuntime(options, model, baseUrl, existing, warnings);
+    if (existing.some((entry) => entry.id === model.id)) {
+      return existingModelRuntime(model, baseUrl, existing, owned !== undefined, warnings);
+    }
+    if (owned === undefined) {
+      return rejectExternalModelConflict(baseUrl, existing, model.id);
+    }
+    await stopManagedLlamaServer(options);
   }
 
-  await stopManagedLlamaServer(options);
+  assertSafeToStart(warnings);
   const pid = await startManagedServer(options, model);
   await writeMetadata(options, metadata(options, model, pid));
   const models = await waitForModels(baseUrl, model.id, startupTimeoutMs());
@@ -49,7 +56,7 @@ export async function ensureLlamaServer(
 }
 
 export async function stopManagedLlamaServer(options: LocalpiOptions): Promise<string> {
-  const info = await readMetadataFile(options);
+  const info = await readActiveMetadataFile(options);
   if (info === undefined) {
     return "no localpi-owned llama-server metadata found";
   }
@@ -67,8 +74,8 @@ export async function stopManagedLlamaServer(options: LocalpiOptions): Promise<s
 
 export async function llamaServerStatus(options: LocalpiOptions): Promise<string> {
   const baseUrl = llamaBaseUrl(options);
-  const info = await readMetadataFile(options);
-  const models = await probe(baseUrl, options.timeoutMs);
+  const info = await readActiveMetadataFile(options);
+  const models = await getLlamaServerModels(options);
   return [
     `runtime: llama-server`,
     `base url: ${baseUrl}`,
@@ -81,29 +88,45 @@ export function llamaBaseUrl(options: LocalpiOptions): string {
   return normalizeBaseUrl(options.baseUrl ?? `http://${options.host}:${String(options.port)}/v1`);
 }
 
-async function existingModelRuntime(
-  options: LocalpiOptions,
+export async function getLlamaServerModels(
+  options: LocalpiOptions
+): Promise<readonly ModelInfo[] | undefined> {
+  return probe(llamaBaseUrl(options), options.timeoutMs);
+}
+
+export async function isManagedLlamaServerActive(options: LocalpiOptions): Promise<boolean> {
+  return (await readActiveMetadataFile(options)) !== undefined;
+}
+
+function existingModelRuntime(
   model: LlamaServerModel,
   baseUrl: string,
   existing: readonly ModelInfo[],
+  managed: boolean,
   warnings: readonly string[]
-): Promise<LlamaServerRuntime> {
+): LlamaServerRuntime {
   const ids = existing.map((entry) => entry.id);
-  if (!ids.includes(model.id)) {
-    throw new Error(
-      `server at ${baseUrl} is already serving ${ids.join(", ")}; stop it or choose that model before starting ${model.id}`
-    );
-  }
   return {
     baseUrl,
     model: model.id,
     availableModels: ids,
-    managed: (await readMetadataFile(options)) !== undefined,
+    managed,
     warnings,
     ...optionalContextWindow(
       model.contextWindow ?? existing.find((entry) => entry.id === model.id)?.contextWindow
     )
   };
+}
+
+function rejectExternalModelConflict(
+  baseUrl: string,
+  existing: readonly ModelInfo[],
+  requestedModel: string
+): never {
+  const ids = existing.map((entry) => entry.id);
+  throw new Error(
+    `server at ${baseUrl} is already serving ${ids.join(", ")}; stop it or choose that model before starting ${requestedModel}`
+  );
 }
 
 async function startManagedServer(
@@ -223,6 +246,33 @@ async function readMetadataFile(options: LocalpiOptions): Promise<ServerMetadata
   }
 }
 
+async function readActiveMetadataFile(
+  options: LocalpiOptions
+): Promise<ServerMetadata | undefined> {
+  const info = await readMetadataFile(options);
+  if (info === undefined) {
+    return undefined;
+  }
+  if (await metadataProcessMatches(info)) {
+    return info;
+  }
+  await rm(metadataPath(options), { force: true });
+  return undefined;
+}
+
+async function metadataProcessMatches(info: ServerMetadata): Promise<boolean> {
+  if (!isProcessAlive(info.pid)) {
+    return false;
+  }
+  try {
+    const raw = await readFile(`/proc/${String(info.pid)}/cmdline`, "utf8");
+    const command = raw.replaceAll("\u0000", " ");
+    return command.includes(info.modelPath) && command.includes("llama-server");
+  } catch {
+    return false;
+  }
+}
+
 function parseMetadata(raw: string): ServerMetadata {
   const value = JSON.parse(raw) as Partial<ServerMetadata>;
   if (typeof value.pid !== "number" || typeof value.modelId !== "string") {
@@ -291,6 +341,13 @@ async function lmStudioWarnings(): Promise<readonly string[]> {
     return [];
   }
   return [`LM Studio also reports loaded models: ${models.map((model) => model.id).join(", ")}`];
+}
+
+function assertSafeToStart(warnings: readonly string[]): void {
+  if (warnings.length === 0) {
+    return;
+  }
+  throw new Error(`${warnings.join("; ")}; unload LM Studio or use --runtime lmstudio`);
 }
 
 async function sleep(ms: number): Promise<void> {
