@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { LocalpiOptions } from "../src/localpi/options.js";
 import type { RuntimeConnection } from "../src/localpi/runtime.js";
 import type { RuntimeConfig } from "../src/pi/config.js";
-import { createLaunchPlan } from "../src/pi/launch.js";
+import { createLaunchPlan, execLaunchPlan } from "../src/pi/launch.js";
 
 describe("Pi launch plan", () => {
   it("adds localpi extensions, system prompt, and default tools", async () => {
@@ -48,6 +48,15 @@ describe("Pi launch plan", () => {
     expect(plan.args).toContain("--tools");
     expect(plan.args.filter((arg) => arg === "--tools")).toHaveLength(1);
     expect(plan.args).toContain("bash");
+  });
+
+  it("runs the plan through a shell and reports the exit code", async () => {
+    await expect(
+      execLaunchPlan({ command: "sh -c 'exit 0' --", args: ["quoted 'arg'"], env: {} })
+    ).resolves.toBe(0);
+    await expect(
+      execLaunchPlan({ command: "sh -c 'exit 7' --", args: [], env: { LOCALPI_TEST: "1" } })
+    ).resolves.toBe(7);
   });
 });
 
