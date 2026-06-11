@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { LocalpiOptions } from "../src/localpi/options.js";
 import { ensureLlamaServer, stopManagedLlamaServer } from "../src/localpi/llama-server.js";
-import { resolveRuntime } from "../src/localpi/runtime.js";
+import { effectiveBaseUrl, resolveRuntime } from "../src/localpi/runtime.js";
 
 describe("runtime resolution", () => {
   const servers: ReturnType<typeof createServer>[] = [];
@@ -276,6 +276,288 @@ describe("runtime resolution", () => {
     ).rejects.toThrow(/failed to start llama-server|LM Studio also reports loaded models/);
   });
 
+  it("resolves externally managed OpenAI-compatible runtimes", async () => {
+    const baseUrl = await startModelServer("served-model");
+
+    await expect(
+      resolveRuntime({ ...options(), runtime: "lmstudio", baseUrl, model: "auto" })
+    ).resolves.toMatchObject({
+      runtime: "lmstudio",
+      baseUrl,
+      model: "served-model",
+      contextWindow: 4096
+    });
+    await expect(
+      resolveRuntime({ ...options(), runtime: "openai-compatible", baseUrl, model: "served-model" })
+    ).resolves.toMatchObject({ runtime: "openai-compatible", model: "served-model" });
+    await expect(
+      resolveRuntime({ ...options(), runtime: "openai-compatible", baseUrl: undefined })
+    ).rejects.toThrow("--runtime openai-compatible requires --base-url");
+  });
+
+  it("computes the effective base URL per runtime", () => {
+    expect(effectiveBaseUrl(options())).toBe("http://127.0.0.1:18194/v1");
+    expect(effectiveBaseUrl({ ...options(), runtime: "lmstudio" })).toBe(
+      "http://127.0.0.1:1234/v1"
+    );
+    expect(
+      effectiveBaseUrl({ ...options(), runtime: "lmstudio", baseUrl: "http://10.0.0.5:1/v1" })
+    ).toBe("http://10.0.0.5:1/v1");
+    expect(
+      effectiveBaseUrl({
+        ...options(),
+        runtime: "openai-compatible",
+        baseUrl: "http://10.0.0.5:1/v1"
+      })
+    ).toBe("http://10.0.0.5:1/v1");
+    expect(() => effectiveBaseUrl({ ...options(), runtime: "openai-compatible" })).toThrow(
+      "--runtime openai-compatible requires --base-url"
+    );
+  });
+
+  it("rejects reusing an external server with a mismatched context window", async () => {
+    const { stateDir } = await tempRuntimeState();
+    const baseUrl = await startModelServer("served-model", 4096);
+
+    await expect(
+      resolveRuntime({
+        ...options(),
+        stateDir,
+        baseUrl,
+        model: "served-model",
+        contextWindow: 8192
+      })
+    ).rejects.toThrow(
+      `server at ${baseUrl} reports served-model ctx=4096, but --ctx 8192 was requested`
+    );
+  });
+
+  it("rejects unknown models that are not served or aliased", async () => {
+    const { stateDir } = await tempRuntimeState();
+    const baseUrl = await startModelServer("other-model");
+
+    await expect(
+      resolveRuntime({ ...options(), stateDir, baseUrl, model: "custom-model" })
+    ).rejects.toThrow("unknown llama-server model alias custom-model");
+  });
+
+  it("maps alias names onto models an external server already serves", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("custom-id", 4096);
+    const modelsFile = path.join(stateDir, "models.json");
+    await writeFile(
+      modelsFile,
+      JSON.stringify({ models: { custom: { id: "custom-id", path: modelPath } } })
+    );
+    const previousModelsFile = process.env["LOCALPI_MODELS_FILE"];
+    process.env["LOCALPI_MODELS_FILE"] = modelsFile;
+
+    try {
+      await expect(
+        resolveRuntime({ ...options(), stateDir, baseUrl, model: "custom" })
+      ).resolves.toMatchObject({
+        runtime: "llama-server/external",
+        model: "custom-id",
+        contextWindow: 4096
+      });
+    } finally {
+      restoreOptionalEnv("LOCALPI_MODELS_FILE", previousModelsFile);
+    }
+  });
+
+  it("fast-reuses a managed llama-server with unchanged options", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("custom-model", 32768);
+    const child = spawnFakeLlamaServer(modelPath);
+    await writeMetadata(stateDir, {
+      pid: child.pid ?? 0,
+      baseUrl,
+      modelId: "custom-model",
+      modelPath,
+      contextWindow: 32768,
+      serverCommand: "llama-server",
+      host: "127.0.0.1",
+      port: Number.parseInt(new URL(baseUrl).port, 10),
+      gpuLayers: 999,
+      parallel: 1
+    });
+
+    await expect(
+      resolveRuntime({ ...options(), stateDir, baseUrl, model: "auto" })
+    ).resolves.toMatchObject({
+      runtime: "llama-server",
+      model: "custom-model",
+      contextWindow: 32768
+    });
+  });
+
+  it("recovers managed model metadata when resolution fails and the server is down", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await unusedBaseUrl();
+    const child = spawnFakeLlamaServer(modelPath);
+    await writeMetadata(stateDir, {
+      pid: child.pid ?? 0,
+      baseUrl,
+      modelId: "managed-model",
+      modelPath,
+      contextWindow: 4096,
+      serverCommand: "llama-server",
+      host: "127.0.0.1",
+      port: Number.parseInt(new URL(baseUrl).port, 10),
+      gpuLayers: 999,
+      parallel: 1
+    });
+
+    await expect(
+      resolveRuntime({
+        ...options(),
+        stateDir,
+        baseUrl,
+        model: "managed-model",
+        serverCommand: "/definitely/missing/localpi-llama-server"
+      })
+    ).rejects.toThrow(/failed to start llama-server|LM Studio also reports loaded models/);
+    await waitForDead(child.pid ?? 0);
+  });
+
+  it("restarts a managed llama-server when the requested context changes", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("custom-model", 32768);
+    const child = spawnFakeLlamaServer(modelPath);
+    const serverCommand = "/definitely/missing/localpi-llama-server";
+    await writeMetadata(stateDir, {
+      pid: child.pid ?? 0,
+      baseUrl,
+      modelId: "custom-model",
+      modelPath,
+      contextWindow: 32768,
+      serverCommand,
+      host: "127.0.0.1",
+      port: Number.parseInt(new URL(baseUrl).port, 10),
+      gpuLayers: 999,
+      parallel: 1
+    });
+
+    await expect(
+      resolveRuntime({
+        ...options(),
+        stateDir,
+        baseUrl,
+        model: "custom-model",
+        contextWindow: 65536,
+        serverCommand
+      })
+    ).rejects.toThrow(/failed to start llama-server|LM Studio also reports loaded models/);
+    await waitForDead(child.pid ?? 0);
+  });
+
+  it("reuses an external llama-server without managed metadata", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("custom-model", 8192);
+
+    await expect(
+      ensureLlamaServer({ ...options(), stateDir, baseUrl }, { id: "custom-model", modelPath })
+    ).resolves.toMatchObject({
+      baseUrl,
+      model: "custom-model",
+      managed: false,
+      contextWindow: 8192,
+      availableModels: ["custom-model"]
+    });
+  });
+
+  it("reuses a managed llama-server when the model and options match", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("custom-model", 32768);
+    const child = spawnFakeLlamaServer(modelPath);
+    await writeMetadata(stateDir, {
+      pid: child.pid ?? 0,
+      baseUrl,
+      modelId: "custom-model",
+      modelPath,
+      contextWindow: 32768,
+      serverCommand: "llama-server",
+      host: "127.0.0.1",
+      port: Number.parseInt(new URL(baseUrl).port, 10),
+      gpuLayers: 999,
+      parallel: 1
+    });
+
+    await expect(
+      ensureLlamaServer(
+        { ...options(), stateDir, baseUrl },
+        { id: "custom-model", modelPath, contextWindow: 32768 }
+      )
+    ).resolves.toMatchObject({ managed: true, model: "custom-model", contextWindow: 32768 });
+  });
+
+  it("refuses to replace an external server serving another model", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("other-model");
+
+    await expect(
+      ensureLlamaServer({ ...options(), stateDir, baseUrl }, { id: "custom-model", modelPath })
+    ).rejects.toThrow(
+      `server at ${baseUrl} is already serving other-model; stop it or choose that model before starting custom-model`
+    );
+  });
+
+  it("rejects an external server with a conflicting context window", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("custom-model", 4096);
+
+    await expect(
+      ensureLlamaServer(
+        { ...options(), stateDir, baseUrl, contextWindow: 8192 },
+        { id: "custom-model", modelPath }
+      )
+    ).rejects.toThrow(
+      `server at ${baseUrl} reports custom-model ctx=4096, but --ctx 8192 was requested`
+    );
+  });
+
+  it("reports llama-server processes that exit during startup", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const commandPath = path.join(stateDir, "fake-exiting-llama-server");
+    await writeFile(commandPath, "#!/bin/sh\nexit 3\n");
+    await chmod(commandPath, 0o755);
+    const previousTimeout = process.env["LOCALPI_SERVER_STARTUP_TIMEOUT_MS"];
+    process.env["LOCALPI_SERVER_STARTUP_TIMEOUT_MS"] = "2000";
+
+    try {
+      await expect(
+        ensureLlamaServer(
+          { ...options(), stateDir, baseUrl: await unusedBaseUrl(), serverCommand: commandPath },
+          { id: "custom-model", modelPath, contextWindow: 4096 }
+        )
+      ).rejects.toThrow(
+        /exited before startup completed \(exit code 3\)|did not become ready|LM Studio also reports loaded models/
+      );
+    } finally {
+      restoreStartupTimeout(previousTimeout);
+    }
+  });
+
+  it("reports the served models when startup readiness fails", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const serverCommand = await fakeOpenAiLlamaServerCommand(stateDir, "wrong-model");
+    const previousTimeout = process.env["LOCALPI_SERVER_STARTUP_TIMEOUT_MS"];
+    process.env["LOCALPI_SERVER_STARTUP_TIMEOUT_MS"] = "2500";
+
+    try {
+      await expect(
+        ensureLlamaServer(
+          { ...options(), stateDir, baseUrl: await unusedBaseUrl(), serverCommand },
+          { id: "custom-model", modelPath, contextWindow: 4096 }
+        )
+      ).rejects.toThrow(
+        /server reported: wrong-model|did not become ready|LM Studio also reports loaded models/
+      );
+    } finally {
+      restoreStartupTimeout(previousTimeout);
+    }
+  });
+
   it("stops a managed llama-server process when readiness times out", async () => {
     const { stateDir, modelPath } = await tempRuntimeState();
     const serverCommand = await fakeLlamaServerCommand(stateDir);
@@ -406,7 +688,10 @@ describe("runtime resolution", () => {
     return commandPath;
   }
 
-  async function fakeOpenAiLlamaServerCommand(stateDir: string): Promise<string> {
+  async function fakeOpenAiLlamaServerCommand(
+    stateDir: string,
+    servedModelId?: string
+  ): Promise<string> {
     const commandPath = path.join(stateDir, "fake-openai-llama-server");
     const pidPath = path.join(stateDir, "fake-openai-server.pid");
     const argsPath = path.join(stateDir, "fake-openai-server.args.json");
@@ -422,7 +707,7 @@ describe("runtime resolution", () => {
         `fs.writeFileSync(${JSON.stringify(argsPath)}, JSON.stringify(args));`,
         'const host = value("--host") || "127.0.0.1";',
         'const port = Number(value("--port"));',
-        'const alias = value("--alias") || "custom-model";',
+        `const alias = ${JSON.stringify(servedModelId ?? null)} ?? value("--alias") ?? "custom-model";`,
         'const ctx = Number(value("--ctx-size") || "32768");',
         "const server = http.createServer((request, response) => {",
         '  if (request.url === "/v1/models") {',

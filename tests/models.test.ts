@@ -4,7 +4,12 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { findModelAlias, listModelAliases, resolveLlamaModel } from "../src/localpi/models.js";
+import {
+  defaultLlamaModelName,
+  findModelAlias,
+  listModelAliases,
+  resolveLlamaModel
+} from "../src/localpi/models.js";
 
 describe("model aliases", () => {
   const previousModelsFile = process.env["LOCALPI_MODELS_FILE"];
@@ -73,5 +78,47 @@ describe("model aliases", () => {
       id: "my-model",
       modelPath: "/models/My Model.gguf"
     });
+  });
+
+  it("defaults the llama model to the built-in gemma alias", () => {
+    expect(defaultLlamaModelName()).toBe("gemma-12b");
+  });
+
+  it("rejects unknown aliases with a hint", async () => {
+    await expect(resolveLlamaModel("nope", undefined, "/home/example")).rejects.toThrow(
+      "unknown llama-server model alias nope; pass a GGUF path or use --list"
+    );
+  });
+
+  it("rejects aliases whose GGUF files are not installed", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "localpi-models-"));
+    try {
+      const configPath = path.join(dir, "models.json");
+      await writeFile(
+        configPath,
+        JSON.stringify({ models: { ghost: { path: path.join(dir, "missing.gguf") } } }),
+        "utf8"
+      );
+      process.env["LOCALPI_MODELS_FILE"] = configPath;
+      await expect(resolveLlamaModel("ghost", undefined, dir)).rejects.toThrow(
+        "model alias ghost has no installed GGUF"
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects configured aliases without any path", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "localpi-models-"));
+    try {
+      const configPath = path.join(dir, "models.json");
+      await writeFile(configPath, JSON.stringify({ models: { broken: { id: "x" } } }), "utf8");
+      process.env["LOCALPI_MODELS_FILE"] = configPath;
+      await expect(listModelAliases(dir)).rejects.toThrow(
+        "model alias broken must define path or paths"
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

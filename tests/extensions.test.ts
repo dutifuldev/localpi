@@ -27,6 +27,21 @@ describe("Pi extensions", () => {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
+
+  it("skips extensions and reports disabled approval when both are off", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-ext-"));
+    try {
+      const bundle = await writeDefaultExtensions({
+        ...options(stateDir),
+        approval: false,
+        tokenStatus: false
+      });
+      expect(bundle.paths).toHaveLength(0);
+      expect(bundle.systemPrompt).toContain("Tool approval is disabled for this session.");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
 });
 
 function options(stateDir: string): LocalpiOptions {
