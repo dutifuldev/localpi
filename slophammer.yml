@@ -1,6 +1,8 @@
 typescript:
-  coverage_threshold: 85
-  complexity_max: 8
+  coverage:
+    threshold: 85
+  complexity:
+    max: 8
   dry:
     max_findings: 0
     paths:
@@ -13,23 +15,25 @@ typescript:
     copied_blocks:
       enabled: true
       min_tokens: 100
-  mutation_targets:
-    - src/localagent/options.ts
-    - src/pi/config.ts
+  mutation:
+    targets:
+      - src/localpi/options.ts
+      - src/pi/config.ts
   dependency_boundaries:
     - from: src/cli
       allow:
         - src/common
-        - src/localagent
+        - src/localpi
         - src/llm
         - src/pi
-    - from: src/localagent
+    - from: src/localpi
       allow:
         - src/common
         - src/llm
+        - src/localpi
     - from: src/pi
       allow:
-        - src/localagent
+        - src/localpi
     - from: src/llm
       allow:
         - src/common
