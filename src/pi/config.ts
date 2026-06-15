@@ -32,7 +32,10 @@ function modelsConfig(options: LocalpiOptions, connection: RuntimeConnection): u
     connection.catalogModels.length === 0 ? fallbackCatalog(connection) : connection.catalogModels;
   return {
     providers: Object.fromEntries(
-      groupedByProvider(models).map((entry) => [entry.providerId, providerConfig(options, entry)])
+      groupedByProvider(models).map((entry) => [
+        entry.providerId,
+        providerConfig(options, connection, entry)
+      ])
     )
   };
 }
@@ -57,7 +60,11 @@ function groupedByProvider(models: readonly CatalogModel[]): readonly ProviderGr
   return [...groups.values()];
 }
 
-function providerConfig(options: LocalpiOptions, group: ProviderGroup): unknown {
+function providerConfig(
+  options: LocalpiOptions,
+  connection: RuntimeConnection,
+  group: ProviderGroup
+): unknown {
   return {
     baseUrl: group.baseUrl,
     api: "openai-completions",
@@ -66,17 +73,21 @@ function providerConfig(options: LocalpiOptions, group: ProviderGroup): unknown 
       supportsDeveloperRole: false,
       supportsReasoningEffort: false
     },
-    models: group.models.map((model) => modelConfig(options, model))
+    models: group.models.map((model) => modelConfig(options, connection, model))
   };
 }
 
-function modelConfig(options: LocalpiOptions, model: CatalogModel): unknown {
+function modelConfig(
+  options: LocalpiOptions,
+  connection: RuntimeConnection,
+  model: CatalogModel
+): unknown {
   return withoutUndefined({
     id: model.modelId,
     name: model.displayName,
     reasoning: false,
     input: ["text"],
-    contextWindow: options.contextWindow ?? model.contextWindow,
+    contextWindow: modelContextWindow(options, connection, model),
     maxTokens: model.maxTokens ?? options.maxTokens,
     cost: {
       input: 0,
@@ -85,6 +96,17 @@ function modelConfig(options: LocalpiOptions, model: CatalogModel): unknown {
       cacheWrite: 0
     }
   });
+}
+
+function modelContextWindow(
+  options: LocalpiOptions,
+  connection: RuntimeConnection,
+  model: CatalogModel
+): number | undefined {
+  if (model.providerId === connection.providerId && model.modelId === connection.model) {
+    return options.contextWindow ?? model.contextWindow;
+  }
+  return model.contextWindow;
 }
 
 function fallbackCatalog(connection: RuntimeConnection): readonly CatalogModel[] {

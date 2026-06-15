@@ -79,25 +79,39 @@ describe("Pi runtime config", () => {
   it("writes every loaded catalog provider for Pi model switching", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-test-"));
     try {
-      const runtime = await writeRuntimeConfig(options(stateDir), {
-        runtime: "vllm",
-        providerId: "vllm",
-        providerName: "vLLM",
-        baseUrl: "http://127.0.0.1:8000/v1",
-        model: "qwen",
-        availableModels: ["qwen"],
-        catalogModels: [
-          catalogModel("lmstudio", "LM Studio", "http://127.0.0.1:1234/v1", "gemma"),
-          catalogModel("vllm", "vLLM", "http://127.0.0.1:8000/v1", "qwen")
-        ],
-        warnings: []
-      });
+      const runtime = await writeRuntimeConfig(
+        { ...options(stateDir), contextWindow: 4096 },
+        {
+          runtime: "vllm",
+          providerId: "vllm",
+          providerName: "vLLM",
+          baseUrl: "http://127.0.0.1:8000/v1",
+          model: "qwen",
+          availableModels: ["qwen"],
+          catalogModels: [
+            catalogModel("lmstudio", "LM Studio", "http://127.0.0.1:1234/v1", "gemma", 120000),
+            catalogModel("vllm", "vLLM", "http://127.0.0.1:8000/v1", "qwen", 32768)
+          ],
+          warnings: []
+        }
+      );
       const models = JSON.parse(await readFile(runtime.modelsPath, "utf8")) as {
-        providers: Record<string, { baseUrl: string; models: readonly { id: string }[] }>;
+        providers: Record<
+          string,
+          { baseUrl: string; models: readonly { id: string; contextWindow?: number }[] }
+        >;
+      };
+      const lmstudio = models.providers["lmstudio"] as {
+        readonly models: readonly { readonly id: string; readonly contextWindow?: number }[];
+      };
+      const vllm = models.providers["vllm"] as {
+        readonly models: readonly { readonly id: string; readonly contextWindow?: number }[];
       };
       expect(Object.keys(models.providers).sort()).toEqual(["lmstudio", "vllm"]);
-      expect(models.providers["lmstudio"]?.models[0]?.id).toBe("gemma");
-      expect(models.providers["vllm"]?.models[0]?.id).toBe("qwen");
+      expect(lmstudio.models[0]?.id).toBe("gemma");
+      expect(vllm.models[0]?.id).toBe("qwen");
+      expect(lmstudio.models[0]?.contextWindow).toBe(120000);
+      expect(vllm.models[0]?.contextWindow).toBe(4096);
       const settings = JSON.parse(await readFile(runtime.settingsPath, "utf8")) as {
         defaultProvider?: string;
         defaultModel?: string;
@@ -145,7 +159,8 @@ function catalogModel(
   providerId: string,
   providerName: string,
   baseUrl: string,
-  modelId: string
+  modelId: string,
+  contextWindow?: number
 ): CatalogModel {
   return {
     providerId,
@@ -157,7 +172,8 @@ function catalogModel(
     displayName: `${providerName} / ${modelId}`,
     maxTokens: 8192,
     capabilities: ["text"],
-    availability: "loaded"
+    availability: "loaded",
+    ...(contextWindow === undefined ? {} : { contextWindow })
   };
 }
 

@@ -364,8 +364,8 @@ async function resolveCatalogRuntime(
 ): Promise<RuntimeConnection> {
   const catalog = await discoverModelCatalog(options);
   const selected = await selectCatalogModel(options, catalog, selectModel);
-  if (selected.runtime === "managed-llama-server" && selected.availability === "startable") {
-    return startSelectedLlamaRuntime(options, selected, catalog);
+  if (selected.runtime === "managed-llama-server") {
+    return resolveSelectedLlamaRuntime(options, selected, catalog);
   }
   return catalogRuntimeConnection(options, selected, catalog);
 }
@@ -521,6 +521,25 @@ function startableFallback(models: readonly CatalogModel[]): CatalogModel | unde
   );
 }
 
+async function resolveSelectedLlamaRuntime(
+  options: LocalpiOptions,
+  selected: CatalogModel,
+  catalog: ModelCatalog
+): Promise<RuntimeConnection> {
+  const existing =
+    selected.availability === "loaded"
+      ? await existingLlamaRuntime(options, selected.aliases[0] ?? selected.modelId)
+      : undefined;
+  if (existing !== undefined) {
+    const selectedModel = managedCatalogModelFromConnection(options, selected, existing);
+    return catalogRuntimeConnection(options, selectedModel, {
+      models: replaceManagedLoadedModels(catalog.models, selected, existing.catalogModels),
+      warnings: [...catalog.warnings, ...existing.warnings]
+    });
+  }
+  return startSelectedLlamaRuntime(options, selected, catalog);
+}
+
 async function startSelectedLlamaRuntime(
   options: LocalpiOptions,
   selected: CatalogModel,
@@ -529,7 +548,19 @@ async function startSelectedLlamaRuntime(
   assertNoLoadedExternalModels(catalog);
   const model = await resolveLlamaModelForStart(selected.aliases[0] ?? selected.modelId, options);
   const runtime = await ensureLlamaServer(options, llamaModelForStart(model, options));
-  const loadedSelected = catalogModelFromModelInfo(
+  const loadedSelected = runtimeSelectedCatalogModel(options, selected, runtime);
+  return catalogRuntimeConnection(options, loadedSelected, {
+    models: replaceManagedLoadedModels(catalog.models, selected, [loadedSelected]),
+    warnings: [...catalog.warnings, ...runtime.warnings]
+  });
+}
+
+function runtimeSelectedCatalogModel(
+  options: LocalpiOptions,
+  selected: CatalogModel,
+  runtime: Awaited<ReturnType<typeof ensureLlamaServer>>
+): CatalogModel {
+  return catalogModelFromModelInfo(
     selected.providerId,
     selected.providerName,
     "managed-llama-server",
@@ -540,10 +571,24 @@ async function startSelectedLlamaRuntime(
     options,
     runtime.contextWindow
   );
-  return catalogRuntimeConnection(options, loadedSelected, {
-    models: replaceSelectedStartable(catalog.models, selected, loadedSelected),
-    warnings: [...catalog.warnings, ...runtime.warnings]
-  });
+}
+
+function managedCatalogModelFromConnection(
+  options: LocalpiOptions,
+  selected: CatalogModel,
+  connection: RuntimeConnection
+): CatalogModel {
+  return catalogModelFromModelInfo(
+    selected.providerId,
+    selected.providerName,
+    "managed-llama-server",
+    connection.baseUrl,
+    connection.contextWindow === undefined
+      ? { id: connection.model }
+      : { id: connection.model, contextWindow: connection.contextWindow },
+    options,
+    connection.contextWindow
+  );
 }
 
 function assertNoLoadedExternalModels(catalog: ModelCatalog): void {
@@ -588,12 +633,19 @@ function connectionRuntimeName(selected: CatalogModel): string {
     : selected.runtime;
 }
 
-function replaceSelectedStartable(
+function replaceManagedLoadedModels(
   models: readonly CatalogModel[],
   selected: CatalogModel,
-  loadedSelected: CatalogModel
+  loaded: readonly CatalogModel[]
 ): readonly CatalogModel[] {
-  return models.map((model) => (model === selected ? loadedSelected : model));
+  return [
+    ...models.filter(
+      (model) =>
+        model !== selected &&
+        !(model.providerId === "llama-server" && model.availability === "loaded")
+    ),
+    ...loaded
+  ];
 }
 
 function modelChoiceList(models: readonly CatalogModel[]): string {

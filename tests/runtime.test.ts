@@ -254,7 +254,53 @@ describe("runtime resolution", () => {
           gpuLayers: 998,
           serverCommand: "/definitely/missing/localpi-llama-server"
         })
-      ).rejects.toThrow(/failed to start llama-server|LM Studio also reports loaded models/);
+      ).rejects.toThrow(
+        /failed to start llama-server|LM Studio also reports loaded models|external local models are already loaded/
+      );
+      await waitForDead(child.pid ?? 0);
+    } finally {
+      restoreOptionalEnv("LOCALPI_MODELS_FILE", previousModelsFile);
+    }
+  });
+
+  it("does not fast-reuse auto catalog managed selections after startup options change", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("custom-model", 32768);
+    const child = spawnFakeLlamaServer(modelPath);
+    const modelsFile = path.join(stateDir, "models.json");
+    await writeFile(
+      modelsFile,
+      JSON.stringify({ models: { custom: { id: "custom-model", path: modelPath } } })
+    );
+    await writeMetadata(stateDir, {
+      pid: child.pid ?? 0,
+      baseUrl,
+      modelId: "custom-model",
+      modelPath,
+      contextWindow: 32768,
+      serverCommand: "llama-server",
+      host: "127.0.0.1",
+      port: Number.parseInt(new URL(baseUrl).port, 10),
+      gpuLayers: 999,
+      parallel: 1
+    });
+    const previousModelsFile = process.env["LOCALPI_MODELS_FILE"];
+    process.env["LOCALPI_MODELS_FILE"] = modelsFile;
+
+    try {
+      await expect(
+        resolveRuntime({
+          ...options(),
+          runtime: "auto",
+          stateDir,
+          baseUrl,
+          model: "custom",
+          gpuLayers: 998,
+          serverCommand: "/definitely/missing/localpi-llama-server"
+        })
+      ).rejects.toThrow(
+        /failed to start llama-server|LM Studio also reports loaded models|external local models are already loaded/
+      );
       await waitForDead(child.pid ?? 0);
     } finally {
       restoreOptionalEnv("LOCALPI_MODELS_FILE", previousModelsFile);
@@ -386,7 +432,10 @@ describe("runtime resolution", () => {
     ).resolves.toMatchObject({
       runtime: "llama-server",
       providerId: "llama-server",
-      model: "custom-model"
+      model: "custom-model",
+      catalogModels: [
+        expect.objectContaining({ providerId: "llama-server", modelId: "custom-model" })
+      ]
     });
     await stopManagedLlamaServer({ ...options(), stateDir });
   });
