@@ -11,7 +11,9 @@ export type ExtensionBundle = {
 export async function writeDefaultExtensions(options: LocalpiOptions): Promise<ExtensionBundle> {
   const extensionDir = path.join(options.stateDir, "pi-extensions");
   await mkdir(extensionDir, { recursive: true });
-  const paths: string[] = [];
+  const paths: string[] = [
+    await writeExtension(extensionDir, "thinking-control.ts", thinkingControlExtensionSource())
+  ];
   if (options.approval) {
     paths.push(await writeExtension(extensionDir, "tool-approval.ts", approvalExtensionSource()));
   }
@@ -217,6 +219,63 @@ function textUpdateFromUnknown(value: unknown): TextUpdate {
     }
   }
   return { kind: "snapshot", text: "" };
+}
+`;
+}
+
+function thinkingControlExtensionSource(): string {
+  return `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+const levels: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+
+export default function localpiThinkingControl(pi: ExtensionAPI): void {
+  pi.registerCommand("thinking", {
+    description: "Set localpi thinking level",
+    getArgumentCompletions: (prefix) => {
+      const trimmed = prefix.trim().toLowerCase();
+      const matches = levels.filter((level) => level.startsWith(trimmed));
+      return matches.length === 0 ? null : matches.map((level) => ({ value: level, label: level }));
+    },
+    handler: async (args, ctx) => {
+      const requested = parseThinkingLevel(args);
+      const level = requested ?? (await promptThinkingLevel(pi.getThinkingLevel(), ctx));
+      if (level === undefined) {
+        return;
+      }
+      pi.setThinkingLevel(level);
+      const actual = pi.getThinkingLevel();
+      ctx.ui.notify(
+        actual === level ? \`thinking: \${actual}\` : \`thinking: \${actual} (clamped from \${level})\`,
+        actual === level ? "info" : "warning"
+      );
+    }
+  });
+
+  pi.on("thinking_level_select", (event, ctx) => {
+    ctx.ui.setStatus("localpi-thinking", \`thinking: \${event.level}\`);
+  });
+
+  pi.on("session_shutdown", (_event, ctx) => {
+    ctx.ui.setStatus("localpi-thinking", undefined);
+  });
+}
+
+async function promptThinkingLevel(
+  current: ThinkingLevel,
+  ctx: { readonly ui: { select(title: string, options: string[]): Promise<string | undefined> } }
+): Promise<ThinkingLevel | undefined> {
+  const selected = await ctx.ui.select(
+    "Thinking level",
+    levels.map((level) => (level === current ? \`\${level} (current)\` : level))
+  );
+  return selected === undefined ? undefined : parseThinkingLevel(selected);
+}
+
+function parseThinkingLevel(value: string): ThinkingLevel | undefined {
+  const normalized = value.trim().split(/\\s+/u)[0]?.toLowerCase();
+  return levels.find((level) => level === normalized);
 }
 `;
 }

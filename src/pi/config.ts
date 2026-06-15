@@ -85,7 +85,7 @@ function modelConfig(
   return withoutUndefined({
     id: model.modelId,
     name: model.displayName,
-    reasoning: false,
+    reasoning: model.reasoning ?? false,
     input: ["text"],
     contextWindow: modelContextWindow(options, connection, model),
     maxTokens: model.maxTokens ?? options.maxTokens,
@@ -121,6 +121,7 @@ function fallbackCatalog(connection: RuntimeConnection): readonly CatalogModel[]
       modelId: connection.model,
       aliases: [],
       displayName: `Local model (${connection.model})`,
+      reasoning: false,
       capabilities: ["text"],
       availability: "loaded",
       ...(connection.contextWindow === undefined ? {} : { contextWindow: connection.contextWindow })

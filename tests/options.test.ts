@@ -38,8 +38,14 @@ describe("localpi option parsing", () => {
   });
 
   it("parses and validates thinking levels", () => {
-    expect(parseLocalpiArgs(["--thinking", "low"]).thinking).toBe("low");
-    expect(parseLocalpiArgs(["--thinking", "xhigh"]).thinking).toBe("xhigh");
+    expect(parseLocalpiArgs(["--thinking", "low"])).toMatchObject({
+      thinking: "low",
+      thinkingSource: "cli"
+    });
+    expect(parseLocalpiArgs(["--thinking", "xhigh"])).toMatchObject({
+      thinking: "xhigh",
+      thinkingSource: "cli"
+    });
     expect(() => parseLocalpiArgs(["--thinking", "banana"])).toThrow(
       "unknown thinking level banana"
     );
@@ -147,7 +153,8 @@ describe("localpi environment defaults", () => {
     "LOCALPI_MODEL",
     "LOCALPI_PROVIDER",
     "LOCALPI_PROVIDERS_FILE",
-    "LOCALPI_SESSION_DIR"
+    "LOCALPI_SESSION_DIR",
+    "LOCALPI_THINKING"
   ] as const;
   const previous = new Map(names.map((name) => [name, process.env[name]]));
 
@@ -171,6 +178,7 @@ describe("localpi environment defaults", () => {
     process.env["LOCALPI_PROVIDER"] = "env-provider";
     process.env["LOCALPI_PROVIDERS_FILE"] = "/tmp/env-providers.json";
     process.env["LOCALPI_SESSION_DIR"] = "/tmp/localpi-env-sessions";
+    process.env["LOCALPI_THINKING"] = "medium";
 
     expect(parseLocalpiArgs([])).toMatchObject({
       baseUrl: "http://127.0.0.1:9999/v1",
@@ -180,7 +188,17 @@ describe("localpi environment defaults", () => {
       model: "env-model",
       provider: "env-provider",
       providersFile: "/tmp/env-providers.json",
-      sessionDir: "/tmp/localpi-env-sessions"
+      sessionDir: "/tmp/localpi-env-sessions",
+      thinking: "medium",
+      thinkingSource: "env"
+    });
+  });
+
+  it("marks the default thinking level as default sourced", () => {
+    delete process.env["LOCALPI_THINKING"];
+    expect(parseLocalpiArgs([])).toMatchObject({
+      thinking: "off",
+      thinkingSource: "default"
     });
   });
 

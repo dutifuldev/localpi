@@ -90,7 +90,7 @@ describe("Pi runtime config", () => {
           availableModels: ["qwen"],
           catalogModels: [
             catalogModel("lmstudio", "LM Studio", "http://127.0.0.1:1234/v1", "gemma", 120000),
-            catalogModel("vllm", "vLLM", "http://127.0.0.1:8000/v1", "qwen", 32768)
+            catalogModel("vllm", "vLLM", "http://127.0.0.1:8000/v1", "qwen", 32768, false)
           ],
           warnings: []
         }
@@ -98,18 +98,31 @@ describe("Pi runtime config", () => {
       const models = JSON.parse(await readFile(runtime.modelsPath, "utf8")) as {
         providers: Record<
           string,
-          { baseUrl: string; models: readonly { id: string; contextWindow?: number }[] }
+          {
+            baseUrl: string;
+            models: readonly { id: string; contextWindow?: number; reasoning?: boolean }[];
+          }
         >;
       };
       const lmstudio = models.providers["lmstudio"] as {
-        readonly models: readonly { readonly id: string; readonly contextWindow?: number }[];
+        readonly models: readonly {
+          readonly id: string;
+          readonly contextWindow?: number;
+          readonly reasoning?: boolean;
+        }[];
       };
       const vllm = models.providers["vllm"] as {
-        readonly models: readonly { readonly id: string; readonly contextWindow?: number }[];
+        readonly models: readonly {
+          readonly id: string;
+          readonly contextWindow?: number;
+          readonly reasoning?: boolean;
+        }[];
       };
       expect(Object.keys(models.providers).sort()).toEqual(["lmstudio", "vllm"]);
       expect(lmstudio.models[0]?.id).toBe("gemma");
       expect(vllm.models[0]?.id).toBe("qwen");
+      expect(lmstudio.models[0]?.reasoning).toBe(true);
+      expect(vllm.models[0]?.reasoning).toBe(false);
       expect(lmstudio.models[0]?.contextWindow).toBe(120000);
       expect(vllm.models[0]?.contextWindow).toBe(4096);
       const settings = JSON.parse(await readFile(runtime.settingsPath, "utf8")) as {
@@ -136,6 +149,7 @@ function options(stateDir: string): LocalpiOptions {
     sessionDir: path.join(stateDir, "sessions"),
     piCommand: "pi",
     thinking: "off",
+    thinkingSource: "default",
     contextWindow: undefined,
     maxTokens: 8192,
     timeoutMs: 1000,
@@ -160,7 +174,8 @@ function catalogModel(
   providerName: string,
   baseUrl: string,
   modelId: string,
-  contextWindow?: number
+  contextWindow?: number,
+  reasoning = true
 ): CatalogModel {
   return {
     providerId,
@@ -171,6 +186,7 @@ function catalogModel(
     aliases: [],
     displayName: `${providerName} / ${modelId}`,
     maxTokens: 8192,
+    reasoning,
     capabilities: ["text"],
     availability: "loaded",
     ...(contextWindow === undefined ? {} : { contextWindow })

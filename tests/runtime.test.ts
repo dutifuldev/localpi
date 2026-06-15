@@ -1316,6 +1316,7 @@ function options(): LocalpiOptions {
     sessionDir: path.join(stateDir, "sessions"),
     piCommand: "pi",
     thinking: "off",
+    thinkingSource: "default",
     contextWindow: undefined,
     maxTokens: 8192,
     timeoutMs: 1000,

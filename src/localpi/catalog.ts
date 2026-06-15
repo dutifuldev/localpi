@@ -24,6 +24,7 @@ export type CatalogModel = {
   readonly displayName: string;
   readonly contextWindow?: number;
   readonly maxTokens?: number;
+  readonly reasoning?: boolean;
   readonly capabilities: readonly ModelCapability[];
   readonly availability: ModelAvailability;
 };
@@ -98,6 +99,7 @@ function openAiCatalogModel(
     aliases: [],
     displayName: `${config.name} / ${model.id}`,
     maxTokens: options.maxTokens,
+    reasoning: modelSupportsReasoning(model.id),
     capabilities: ["text"],
     availability: "loaded",
     ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow })
@@ -167,6 +169,7 @@ async function loadedLlamaModels(
         aliases: aliases.filter((alias) => alias.id === model.id).map((alias) => alias.name),
         displayName: `${config.name} / ${model.id}`,
         maxTokens: options.maxTokens,
+        reasoning: modelSupportsReasoning(model.id),
         capabilities: ["text"],
         availability: "loaded",
         ...(contextWindow === undefined ? {} : { contextWindow })
@@ -200,6 +203,7 @@ async function startableLlamaModels(
           aliases: [alias.name],
           displayName: `${config.name} / ${alias.name}`,
           maxTokens: options.maxTokens,
+          reasoning: modelSupportsReasoning(resolved.id),
           capabilities: ["text"] as const,
           availability: "startable" as const,
           ...(resolved.contextWindow === undefined ? {} : { contextWindow: resolved.contextWindow })
@@ -210,4 +214,16 @@ async function startableLlamaModels(
     })
   );
   return startable.filter((model): model is CatalogModel => model !== undefined);
+}
+
+function modelSupportsReasoning(modelId: string): boolean {
+  const normalized = modelId.toLowerCase();
+  return (
+    normalized.includes("reason") ||
+    normalized.includes("thinking") ||
+    normalized.includes("deepseek") ||
+    normalized.includes("qwen") ||
+    normalized.includes("gpt-oss") ||
+    normalized.includes("gemma-4")
+  );
 }

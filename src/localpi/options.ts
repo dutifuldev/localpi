@@ -4,6 +4,16 @@ import { normalizeBaseUrl } from "../llm/openai.js";
 
 export type RuntimeKind = "auto" | "llama-server" | "lmstudio" | "vllm" | "openai-compatible";
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ThinkingSource = "default" | "env" | "cli";
+
+export const thinkingLevels: readonly ThinkingLevel[] = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh"
+];
 
 export type LocalpiOptions = {
   readonly runtime: RuntimeKind;
@@ -16,6 +26,7 @@ export type LocalpiOptions = {
   readonly sessionDir: string;
   readonly piCommand: string;
   readonly thinking: ThinkingLevel;
+  readonly thinkingSource: ThinkingSource;
   readonly contextWindow: number | undefined;
   readonly maxTokens: number;
   readonly timeoutMs: number;
@@ -37,6 +48,7 @@ export type LocalpiOptions = {
 export function defaultOptions(): LocalpiOptions {
   const home = envString("HOME", ".");
   const stateDir = envString("LOCALPI_STATE_DIR", path.join(home, ".local/state/localpi"));
+  const envThinking = process.env["LOCALPI_THINKING"];
   return {
     runtime: parseRuntime(envString("LOCALPI_RUNTIME", "auto")),
     baseUrl: envOptionalBaseUrl("LOCALPI_BASE_URL"),
@@ -47,7 +59,8 @@ export function defaultOptions(): LocalpiOptions {
     stateDir,
     sessionDir: defaultSessionDir(stateDir),
     piCommand: envString("LOCALPI_PI_CMD", "npx -y @earendil-works/pi-coding-agent@latest"),
-    thinking: parseThinkingLevel(envString("LOCALPI_THINKING", "off")),
+    thinking: parseThinkingLevel(envThinking ?? "off"),
+    thinkingSource: envThinking === undefined ? "default" : "env",
     contextWindow: envOptionalPositiveInteger("LOCALPI_CONTEXT_WINDOW"),
     maxTokens: envPositiveInteger("LOCALPI_MAX_TOKENS", "8192"),
     timeoutMs: envPositiveInteger("LOCALPI_TIMEOUT_MS", "3000"),
@@ -189,7 +202,11 @@ const valueFlagUpdaters: Readonly<Record<string, OptionUpdater>> = {
   "--state-dir": (options, value) => ({ ...options, stateDir: value }),
   "--session-dir": (options, value) => ({ ...options, sessionDir: value }),
   "--pi-command": (options, value) => ({ ...options, piCommand: value }),
-  "--thinking": (options, value) => ({ ...options, thinking: parseThinkingLevel(value) }),
+  "--thinking": (options, value) => ({
+    ...options,
+    thinking: parseThinkingLevel(value),
+    thinkingSource: "cli"
+  }),
   "--ctx": (options, value) => ({ ...options, contextWindow: parsePositiveInteger(value) }),
   "--context-window": (options, value) => ({
     ...options,
@@ -235,16 +252,11 @@ function parseRuntime(value: string): RuntimeKind {
   );
 }
 
-function parseThinkingLevel(value: string): ThinkingLevel {
-  if (
-    value === "off" ||
-    value === "minimal" ||
-    value === "low" ||
-    value === "medium" ||
-    value === "high" ||
-    value === "xhigh"
-  ) {
-    return value;
+export function parseThinkingLevel(value: string): ThinkingLevel {
+  for (const level of thinkingLevels) {
+    if (value === level) {
+      return level;
+    }
   }
   throw new Error(
     `unknown thinking level ${value}; expected off, minimal, low, medium, high, or xhigh`
