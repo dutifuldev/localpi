@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { LocalpiOptions } from "../src/localpi/options.js";
 import { ensureLlamaServer, stopManagedLlamaServer } from "../src/localpi/llama-server.js";
-import { effectiveBaseUrl, resolveRuntime } from "../src/localpi/runtime.js";
+import { effectiveBaseUrl, resolveRuntime, statusOutput } from "../src/localpi/runtime.js";
 
 describe("runtime resolution", () => {
   const servers: ReturnType<typeof createServer>[] = [];
@@ -295,6 +295,23 @@ describe("runtime resolution", () => {
     ).rejects.toThrow("--runtime openai-compatible requires --base-url");
   });
 
+  it("preserves explicit OpenAI-compatible models when /models is empty", async () => {
+    const baseUrl = await startModelListServer([]);
+
+    await expect(
+      resolveRuntime({
+        ...options(),
+        runtime: "openai-compatible",
+        baseUrl,
+        model: "explicit-model"
+      })
+    ).resolves.toMatchObject({
+      runtime: "openai-compatible",
+      model: "explicit-model",
+      availableModels: ["explicit-model"]
+    });
+  });
+
   it("resolves direct vLLM runtimes as externally managed providers", async () => {
     const baseUrl = await startModelServer("qwen-vllm", 131072);
 
@@ -386,6 +403,33 @@ describe("runtime resolution", () => {
         model: "custom-id",
         contextWindow: 4096
       });
+    } finally {
+      restoreOptionalEnv("LOCALPI_MODELS_FILE", previousModelsFile);
+    }
+  });
+
+  it("reports auto status without starting startable llama-server models", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const modelsFile = path.join(stateDir, "models.json");
+    await writeFile(
+      modelsFile,
+      JSON.stringify({ models: { custom: { id: "custom-id", path: modelPath } } })
+    );
+    const previousModelsFile = process.env["LOCALPI_MODELS_FILE"];
+    process.env["LOCALPI_MODELS_FILE"] = modelsFile;
+
+    try {
+      const output = await statusOutput({
+        ...options(),
+        runtime: "auto",
+        stateDir,
+        serverCommand: "/definitely/missing/localpi-llama-server"
+      });
+      expect(output).toContain("runtime: auto");
+      expect(output).toContain("startable models: llama-server/custom-id");
+      await expect(
+        readFile(path.join(stateDir, "server", "llama-server.json"), "utf8")
+      ).rejects.toThrow();
     } finally {
       restoreOptionalEnv("LOCALPI_MODELS_FILE", previousModelsFile);
     }
@@ -686,10 +730,14 @@ describe("runtime resolution", () => {
   });
 
   async function startModelServer(model: string, contextWindow = 4096): Promise<string> {
+    return startModelListServer([{ id: model, context_length: contextWindow }]);
+  }
+
+  async function startModelListServer(models: readonly Record<string, unknown>[]): Promise<string> {
     const server = createServer((request, response) => {
       if (request.url === "/v1/models") {
         response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify({ data: [{ id: model, context_length: contextWindow }] }));
+        response.end(JSON.stringify({ data: models }));
         return;
       }
       response.writeHead(404);

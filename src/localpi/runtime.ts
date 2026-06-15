@@ -69,6 +69,9 @@ export async function statusOutput(options: LocalpiOptions): Promise<string> {
   if (options.runtime === "llama-server") {
     return `${await llamaServerStatus(options)}\n${await aliasListOutput()}`;
   }
+  if (options.runtime === "auto") {
+    return autoStatusOutput(options);
+  }
   const connection = await resolveRuntime(options);
   return connectionStatus(connection);
 }
@@ -96,6 +99,26 @@ export function connectionStatus(connection: RuntimeConnection): string {
       ...connection.warnings.map((warning) => `warning: ${warning}`)
     ].join("\n") + "\n"
   );
+}
+
+async function autoStatusOutput(options: LocalpiOptions): Promise<string> {
+  const catalog = await discoverModelCatalog(options);
+  const loaded = catalog.models.filter((model) => model.availability === "loaded");
+  const startable = catalog.models.filter((model) => model.availability === "startable");
+  return (
+    [
+      "runtime: auto",
+      `loaded models: ${statusModelList(loaded)}`,
+      `startable models: ${statusModelList(startable)}`,
+      ...catalog.warnings.map((warning) => `warning: ${warning}`)
+    ].join("\n") + "\n"
+  );
+}
+
+function statusModelList(models: readonly CatalogModel[]): string {
+  return models.length === 0
+    ? "none"
+    : models.map((model) => `${model.providerId}/${model.modelId}`).join(", ");
 }
 
 async function resolveLlamaRuntime(options: LocalpiOptions): Promise<RuntimeConnection> {

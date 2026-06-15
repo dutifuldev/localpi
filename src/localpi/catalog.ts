@@ -74,8 +74,12 @@ async function discoverOpenAiCompatibleProvider(
   }
   try {
     const models = await listModels(config.baseUrl, options.timeoutMs);
+    const explicitModel = explicitOpenAiCatalogModel(config, models, options);
     return {
-      models: models.map((model) => openAiCatalogModel(config, model, options)),
+      models:
+        explicitModel === undefined
+          ? models.map((model) => openAiCatalogModel(config, model, options))
+          : [explicitModel],
       warnings: []
     };
   } catch (error) {
@@ -105,6 +109,31 @@ function openAiCatalogModel(
     availability: "loaded",
     ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow })
   };
+}
+
+function explicitOpenAiCatalogModel(
+  config: ProviderConfig,
+  models: readonly ModelInfo[],
+  options: LocalpiOptions
+): CatalogModel | undefined {
+  const requested = options.model;
+  if (models.length !== 0 || requested === undefined || requested === "auto") {
+    return undefined;
+  }
+  if (!explicitOpenAiProviderSelected(options, config.id)) {
+    return undefined;
+  }
+  return openAiCatalogModel(config, { id: requested }, options);
+}
+
+function explicitOpenAiProviderSelected(options: LocalpiOptions, providerId: string): boolean {
+  return (
+    options.provider === providerId ||
+    (options.provider === undefined &&
+      (options.runtime === "lmstudio" ||
+        options.runtime === "vllm" ||
+        options.runtime === "openai-compatible"))
+  );
 }
 
 async function discoverManagedLlamaProvider(
