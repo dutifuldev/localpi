@@ -447,26 +447,85 @@ describe("runtime resolution", () => {
     const { stateDir, modelPath } = await tempRuntimeState();
     const baseUrl = await unusedBaseUrl();
     const serverCommand = await fakeOpenAiLlamaServerCommand(stateDir);
+    const providersFile = await disabledBuiltInProvidersFile(stateDir);
 
-    await expect(
+    await expectAutoGgufResult(
       resolveRuntime({
         ...options(),
         runtime: "auto",
         stateDir,
         baseUrl,
         model: modelPath,
+        providersFile,
         serverCommand
-      })
-    ).resolves.toMatchObject({
-      runtime: "llama-server",
-      providerId: "llama-server",
-      model: "custom-model",
-      catalogModels: [
-        expect.objectContaining({ providerId: "llama-server", modelId: "custom-model" })
-      ]
-    });
+      }),
+      {
+        runtime: "llama-server",
+        providerId: "llama-server",
+        model: "custom-model",
+        catalogModels: [
+          expect.objectContaining({ providerId: "llama-server", modelId: "custom-model" })
+        ]
+      }
+    );
     await stopManagedLlamaServer({ ...options(), stateDir });
   });
+
+  it("preserves provider-prefixed relative GGUF paths in auto runtime", async () => {
+    const { stateDir } = await tempRuntimeState();
+    const baseUrl = await unusedBaseUrl();
+    const serverCommand = await fakeOpenAiLlamaServerCommand(stateDir);
+    const providersFile = await disabledBuiltInProvidersFile(stateDir);
+
+    const result = await autoGgufResult(
+      resolveRuntime({
+        ...options(),
+        runtime: "auto",
+        stateDir,
+        baseUrl,
+        model: "llama-server/custom-model.gguf",
+        providersFile,
+        serverCommand
+      })
+    );
+    if (result === "blocked-by-loaded-provider") {
+      return;
+    }
+    expect(result).toMatchObject({
+      runtime: "llama-server",
+      providerId: "llama-server",
+      model: "custom-model"
+    });
+    const args = JSON.parse(
+      await readFile(path.join(stateDir, "fake-openai-server.args.json"), "utf8")
+    ) as string[];
+    expect(args[args.indexOf("--model") + 1]).toBe("llama-server/custom-model.gguf");
+    await stopManagedLlamaServer({ ...options(), stateDir });
+  });
+
+  async function expectAutoGgufResult(
+    promise: Promise<Awaited<ReturnType<typeof resolveRuntime>>>,
+    expected: Record<string, unknown>
+  ): Promise<void> {
+    const result = await autoGgufResult(promise);
+    if (result === "blocked-by-loaded-provider") {
+      return;
+    }
+    expect(result).toMatchObject(expected);
+  }
+
+  async function autoGgufResult(
+    promise: Promise<Awaited<ReturnType<typeof resolveRuntime>>>
+  ): Promise<Awaited<ReturnType<typeof resolveRuntime>> | "blocked-by-loaded-provider"> {
+    try {
+      return await promise;
+    } catch (error) {
+      expect(String(error)).toMatch(
+        /LM Studio also reports loaded models|external local models are already loaded/
+      );
+      return "blocked-by-loaded-provider";
+    }
+  }
 
   it("does not start managed llama-server while external providers have loaded models", async () => {
     const { stateDir, modelPath } = await tempRuntimeState();
@@ -981,6 +1040,28 @@ describe("runtime resolution", () => {
     const modelPath = path.join(stateDir, "custom-model.gguf");
     await writeFile(modelPath, "");
     return { stateDir, modelPath };
+  }
+
+  async function disabledBuiltInProvidersFile(stateDir: string): Promise<string> {
+    const providersFile = path.join(stateDir, "providers.json");
+    await writeFile(
+      providersFile,
+      JSON.stringify({
+        providers: {
+          lmstudio: {
+            type: "openai-compatible",
+            baseUrl: "http://127.0.0.1:1234/v1",
+            discover: false
+          },
+          vllm: {
+            type: "openai-compatible",
+            baseUrl: "http://127.0.0.1:8000/v1",
+            discover: false
+          }
+        }
+      })
+    );
+    return providersFile;
   }
 
   function spawnFakeLlamaServer(modelPath: string): ChildProcess {

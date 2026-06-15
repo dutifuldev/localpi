@@ -458,7 +458,7 @@ function normalizedSelection(
   models: readonly CatalogModel[]
 ): { readonly provider: string | undefined; readonly model: string } {
   const requested = options.model ?? "auto";
-  if (options.provider !== undefined || requested === "auto") {
+  if (options.provider !== undefined || requested === "auto" || isGgufFilePathRequest(requested)) {
     return { provider: options.provider, model: requested };
   }
   const separator = requested.indexOf("/");
@@ -509,6 +509,10 @@ async function customPathCatalogModel(
 
 function isGgufPathRequest(value: string): boolean {
   return value.endsWith(".gguf") || value.includes("/") || value.includes("\\");
+}
+
+function isGgufFilePathRequest(value: string): boolean {
+  return value.toLowerCase().endsWith(".gguf") || value.includes("\\");
 }
 
 function startableFallback(models: readonly CatalogModel[]): CatalogModel | undefined {
