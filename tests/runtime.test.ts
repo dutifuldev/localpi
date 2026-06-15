@@ -618,6 +618,47 @@ describe("runtime resolution", () => {
     }
   });
 
+  it("does not probe the managed endpoint as an external provider", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("custom-id", 4096);
+    const modelsFile = path.join(stateDir, "models.json");
+    await writeFile(
+      modelsFile,
+      JSON.stringify({
+        providers: {
+          vllm: {
+            type: "openai-compatible",
+            name: "vLLM",
+            baseUrl,
+            discover: true
+          }
+        },
+        models: { custom: { id: "custom-id", path: modelPath } }
+      })
+    );
+    const previousModelsFile = process.env["LOCALPI_MODELS_FILE"];
+    process.env["LOCALPI_MODELS_FILE"] = modelsFile;
+
+    try {
+      await expect(
+        resolveRuntime({
+          ...options(),
+          runtime: "auto",
+          stateDir,
+          baseUrl,
+          model: "auto",
+          providersFile: modelsFile
+        })
+      ).resolves.toMatchObject({
+        runtime: "llama-server",
+        providerId: "llama-server",
+        model: "custom-id"
+      });
+    } finally {
+      restoreOptionalEnv("LOCALPI_MODELS_FILE", previousModelsFile);
+    }
+  });
+
   it("reuses loaded llama-server aliases while external providers are loaded", async () => {
     const { stateDir, modelPath } = await tempRuntimeState();
     const baseUrl = await startModelServer("custom-id", 4096);

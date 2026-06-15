@@ -222,12 +222,7 @@ async function startableLlamaModels(
 async function providerConfigs(options: LocalpiOptions): Promise<readonly ProviderConfig[]> {
   switch (options.runtime) {
     case "auto":
-      return dedupeProviderConfigs([
-        lmStudioProvider(),
-        vllmProvider(),
-        ...(await configuredProviderConfigs(options)),
-        managedLlamaProvider()
-      ]);
+      return autoProviderConfigs(options, await configuredProviderConfigs(options));
     case "lmstudio":
       return [lmStudioProvider(options.baseUrl)];
     case "vllm":
@@ -245,6 +240,26 @@ async function providerConfigs(options: LocalpiOptions): Promise<readonly Provid
     case "llama-server":
       return [managedLlamaProvider()];
   }
+}
+
+function autoProviderConfigs(
+  options: LocalpiOptions,
+  configured: readonly ProviderConfig[]
+): readonly ProviderConfig[] {
+  const managedBaseUrl = llamaBaseUrl(options);
+  return dedupeProviderConfigs(
+    [lmStudioProvider(), vllmProvider(), ...configured, managedLlamaProvider()].filter((config) =>
+      shouldProbeProvider(config, managedBaseUrl)
+    )
+  );
+}
+
+function shouldProbeProvider(config: ProviderConfig, managedBaseUrl: string): boolean {
+  return (
+    config.type === "managed-llama-server" ||
+    config.baseUrl === undefined ||
+    normalizeBaseUrl(config.baseUrl) !== managedBaseUrl
+  );
 }
 
 function lmStudioProvider(baseUrl = "http://127.0.0.1:1234/v1"): ProviderConfig {
