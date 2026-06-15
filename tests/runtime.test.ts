@@ -312,6 +312,14 @@ describe("runtime resolution", () => {
     });
   });
 
+  it("does not treat external model ids with slashes as GGUF paths", async () => {
+    const baseUrl = await startModelServer("other-model");
+
+    await expect(
+      resolveRuntime({ ...options(), runtime: "lmstudio", baseUrl, model: "org/model" })
+    ).rejects.toThrow("model org/model is not available");
+  });
+
   it("resolves direct vLLM runtimes as externally managed providers", async () => {
     const baseUrl = await startModelServer("qwen-vllm", 131072);
 
@@ -381,6 +389,42 @@ describe("runtime resolution", () => {
       model: "custom-model"
     });
     await stopManagedLlamaServer({ ...options(), stateDir });
+  });
+
+  it("does not start managed llama-server while external providers have loaded models", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("qwen-vllm", 131072);
+    const modelsFile = path.join(stateDir, "models.json");
+    await writeFile(
+      modelsFile,
+      JSON.stringify({
+        providers: {
+          vllm: {
+            type: "openai-compatible",
+            name: "vLLM",
+            baseUrl,
+            discover: true
+          }
+        },
+        models: { custom: { id: "custom-id", path: modelPath } }
+      })
+    );
+    const previousModelsFile = process.env["LOCALPI_MODELS_FILE"];
+    process.env["LOCALPI_MODELS_FILE"] = modelsFile;
+
+    try {
+      await expect(
+        resolveRuntime({
+          ...options(),
+          runtime: "auto",
+          model: "custom",
+          providersFile: modelsFile,
+          serverCommand: "/definitely/missing/localpi-llama-server"
+        })
+      ).rejects.toThrow("external local models are already loaded");
+    } finally {
+      restoreOptionalEnv("LOCALPI_MODELS_FILE", previousModelsFile);
+    }
   });
 
   it("selects already-loaded llama-server models by alias in auto runtime", async () => {

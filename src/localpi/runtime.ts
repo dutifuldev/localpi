@@ -484,7 +484,11 @@ async function customPathCatalogModel(
   provider: string | undefined,
   requested: string
 ): Promise<CatalogModel | undefined> {
-  if ((provider !== undefined && provider !== "llama-server") || !isGgufPathRequest(requested)) {
+  if (
+    options.runtime !== "auto" ||
+    (provider !== undefined && provider !== "llama-server") ||
+    !isGgufPathRequest(requested)
+  ) {
     return undefined;
   }
   const resolved = await resolveLlamaModelForStart(requested, options);
@@ -522,6 +526,7 @@ async function startSelectedLlamaRuntime(
   selected: CatalogModel,
   catalog: ModelCatalog
 ): Promise<RuntimeConnection> {
+  assertNoLoadedExternalModels(catalog);
   const model = await resolveLlamaModelForStart(selected.aliases[0] ?? selected.modelId, options);
   const runtime = await ensureLlamaServer(options, llamaModelForStart(model, options));
   const loadedSelected = catalogModelFromModelInfo(
@@ -539,6 +544,18 @@ async function startSelectedLlamaRuntime(
     models: replaceSelectedStartable(catalog.models, selected, loadedSelected),
     warnings: [...catalog.warnings, ...runtime.warnings]
   });
+}
+
+function assertNoLoadedExternalModels(catalog: ModelCatalog): void {
+  const external = catalog.models.filter(
+    (model) => model.runtime !== "managed-llama-server" && model.availability === "loaded"
+  );
+  if (external.length === 0) {
+    return;
+  }
+  throw new Error(
+    `external local models are already loaded; choose one or unload them before starting llama-server:\n${modelChoiceList(external)}`
+  );
 }
 
 function catalogRuntimeConnection(
