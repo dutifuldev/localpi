@@ -545,14 +545,26 @@ async function startSelectedLlamaRuntime(
   selected: CatalogModel,
   catalog: ModelCatalog
 ): Promise<RuntimeConnection> {
-  assertNoLoadedExternalModels(catalog);
   const model = await resolveLlamaModelForStart(selected.aliases[0] ?? selected.modelId, options);
-  const runtime = await ensureLlamaServer(options, llamaModelForStart(model, options));
+  const modelForStart = llamaModelForStart(model, options);
+  await stopStaleManagedLlamaServer(options, modelForStart);
+  assertNoLoadedExternalModels(catalog);
+  const runtime = await ensureLlamaServer(options, modelForStart);
   const loadedSelected = runtimeSelectedCatalogModel(options, selected, runtime);
   return catalogRuntimeConnection(options, loadedSelected, {
     models: replaceManagedLoadedModels(catalog.models, selected, [loadedSelected]),
     warnings: [...catalog.warnings, ...runtime.warnings]
   });
+}
+
+async function stopStaleManagedLlamaServer(
+  options: LocalpiOptions,
+  model: ReturnType<typeof llamaModelForStart>
+): Promise<void> {
+  const managed = await getManagedLlamaServerMetadata(options);
+  if (managed !== undefined && managedLlamaServerNeedsRestart(options, managed, model)) {
+    await stopManagedLlamaServer(options);
+  }
 }
 
 function runtimeSelectedCatalogModel(

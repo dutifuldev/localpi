@@ -257,7 +257,6 @@ describe("runtime resolution", () => {
       ).rejects.toThrow(
         /failed to start llama-server|LM Studio also reports loaded models|external local models are already loaded/
       );
-      await waitForDead(child.pid ?? 0);
     } finally {
       restoreOptionalEnv("LOCALPI_MODELS_FILE", previousModelsFile);
     }
@@ -266,11 +265,22 @@ describe("runtime resolution", () => {
   it("does not fast-reuse auto catalog managed selections after startup options change", async () => {
     const { stateDir, modelPath } = await tempRuntimeState();
     const baseUrl = await startModelServer("custom-model", 32768);
+    const externalBaseUrl = await startModelServer("qwen-vllm", 131072);
     const child = spawnFakeLlamaServer(modelPath);
     const modelsFile = path.join(stateDir, "models.json");
     await writeFile(
       modelsFile,
-      JSON.stringify({ models: { custom: { id: "custom-model", path: modelPath } } })
+      JSON.stringify({
+        providers: {
+          vllm: {
+            type: "openai-compatible",
+            name: "vLLM",
+            baseUrl: externalBaseUrl,
+            discover: true
+          }
+        },
+        models: { custom: { id: "custom-model", path: modelPath } }
+      })
     );
     await writeMetadata(stateDir, {
       pid: child.pid ?? 0,
@@ -298,9 +308,7 @@ describe("runtime resolution", () => {
           gpuLayers: 998,
           serverCommand: "/definitely/missing/localpi-llama-server"
         })
-      ).rejects.toThrow(
-        /failed to start llama-server|LM Studio also reports loaded models|external local models are already loaded/
-      );
+      ).rejects.toThrow("external local models are already loaded");
       await waitForDead(child.pid ?? 0);
     } finally {
       restoreOptionalEnv("LOCALPI_MODELS_FILE", previousModelsFile);
