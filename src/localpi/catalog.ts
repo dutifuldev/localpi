@@ -247,11 +247,12 @@ function autoProviderConfigs(
   configured: readonly ProviderConfig[]
 ): readonly ProviderConfig[] {
   const managedBaseUrl = llamaBaseUrl(options);
-  return dedupeProviderConfigs(
-    [lmStudioProvider(), vllmProvider(), ...configured, managedLlamaProvider()].filter((config) =>
-      shouldProbeProvider(config, managedBaseUrl)
-    )
-  );
+  return dedupeProviderConfigs([
+    lmStudioProvider(),
+    vllmProvider(),
+    ...configured,
+    managedLlamaProvider()
+  ]).filter((config) => shouldProbeProvider(config, managedBaseUrl));
 }
 
 function shouldProbeProvider(config: ProviderConfig, managedBaseUrl: string): boolean {
