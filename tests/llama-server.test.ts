@@ -6,7 +6,7 @@ import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { LocalpiOptions } from "../src/localpi/options.js";
 import type { ManagedLlamaServerMetadata } from "../src/localpi/llama-server.js";
@@ -21,8 +21,14 @@ import {
 describe("llama-server state", () => {
   const children: ChildProcess[] = [];
   const tempDirs: string[] = [];
+  const previousSafetyProbe = process.env["LOCALPI_LMSTUDIO_SAFETY_PROBE"];
+
+  beforeEach(() => {
+    process.env["LOCALPI_LMSTUDIO_SAFETY_PROBE"] = "0";
+  });
 
   afterEach(async () => {
+    restoreOptionalEnv("LOCALPI_LMSTUDIO_SAFETY_PROBE", previousSafetyProbe);
     for (const child of children) {
       if (child.pid !== undefined) {
         child.kill("SIGKILL");
@@ -226,7 +232,7 @@ function options(): LocalpiOptions {
     baseUrl: undefined,
     model: "custom-model",
     provider: undefined,
-    providerId: "local-openai",
+    customProviderId: "local-openai",
     providersFile: undefined,
     stateDir,
     sessionDir: path.join(stateDir, "sessions"),
@@ -265,4 +271,12 @@ function metadata(): ManagedLlamaServerMetadata {
     parallel: 1,
     reasoningMode: "off"
   };
+}
+
+function restoreOptionalEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    Reflect.deleteProperty(process.env, name);
+    return;
+  }
+  process.env[name] = value;
 }

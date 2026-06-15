@@ -222,6 +222,23 @@ localpi --stop
 }
 ```
 
+Provider registries use the same file or `LOCALPI_PROVIDERS_FILE`:
+
+```json
+{
+  "providers": {
+    "vllm-qwen": {
+      "type": "openai-compatible",
+      "name": "vLLM Qwen",
+      "baseUrl": "http://127.0.0.1:8000/v1",
+      "discover": true
+    }
+  }
+}
+```
+
+Use `discover: false` for endpoints that should not be probed during startup. They can still be selected explicitly with `--provider vllm-qwen --model <id>`.
+
 ## Development
 
 ```bash

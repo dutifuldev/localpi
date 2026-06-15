@@ -10,7 +10,7 @@ export type LocalpiOptions = {
   readonly baseUrl: string | undefined;
   readonly model: string | undefined;
   readonly provider: string | undefined;
-  readonly providerId: string;
+  readonly customProviderId: string;
   readonly providersFile: string | undefined;
   readonly stateDir: string;
   readonly sessionDir: string;
@@ -42,7 +42,7 @@ export function defaultOptions(): LocalpiOptions {
     baseUrl: envOptionalBaseUrl("LOCALPI_BASE_URL"),
     model: process.env["LOCALPI_MODEL"],
     provider: process.env["LOCALPI_PROVIDER"],
-    providerId: envString("LOCALPI_PROVIDER_ID", "local-openai"),
+    customProviderId: envString("LOCALPI_PROVIDER_ID", "local-openai"),
     providersFile: process.env["LOCALPI_PROVIDERS_FILE"],
     stateDir,
     sessionDir: defaultSessionDir(stateDir),
@@ -184,7 +184,7 @@ const valueFlagUpdaters: Readonly<Record<string, OptionUpdater>> = {
   "--base-url": (options, value) => ({ ...options, baseUrl: normalizeBaseUrl(value) }),
   "--model": (options, value) => ({ ...options, model: value }),
   "--provider": (options, value) => ({ ...options, provider: value }),
-  "--provider-id": (options, value) => ({ ...options, providerId: value }),
+  "--provider-id": (options, value) => ({ ...options, customProviderId: value }),
   "--providers-file": (options, value) => ({ ...options, providersFile: value }),
   "--state-dir": (options, value) => ({ ...options, stateDir: value }),
   "--session-dir": (options, value) => ({ ...options, sessionDir: value }),
