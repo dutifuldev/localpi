@@ -351,12 +351,44 @@ async function selectCatalogModel(
   const selection = normalizedSelection(options, catalog.models);
   const providerFiltered = modelsForProvider(catalog.models, selection.provider);
   if (providerFiltered.length === 0) {
+    const customPath = await customPathCatalogModel(options, selection.provider, selection.model);
+    if (customPath !== undefined) {
+      return customPath;
+    }
     throw new Error(`provider ${selection.provider ?? ""} did not report usable models`);
   }
   if (selection.model !== "auto") {
-    return exactCatalogModel(providerFiltered, selection.model);
+    return selectExplicitCatalogModel(
+      options,
+      providerFiltered,
+      selection.provider,
+      selection.model
+    );
   }
   return selectAutomaticCatalogModel(providerFiltered, catalog.warnings, selectModel);
+}
+
+async function selectExplicitCatalogModel(
+  options: LocalpiOptions,
+  models: readonly CatalogModel[],
+  provider: string | undefined,
+  requested: string
+): Promise<CatalogModel> {
+  const matches = matchingCatalogModels(models, requested);
+  const [onlyMatch] = matches;
+  if (onlyMatch !== undefined && matches.length === 1) {
+    return onlyMatch;
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `model ${requested} is available from multiple providers; choose one with --provider:\n${modelChoiceList(matches)}`
+    );
+  }
+  const customPath = await customPathCatalogModel(options, provider, requested);
+  if (customPath !== undefined) {
+    return customPath;
+  }
+  throw new Error(`model ${requested} is not available; choices:\n${modelChoiceList(models)}`);
 }
 
 async function selectAutomaticCatalogModel(
@@ -413,20 +445,39 @@ function normalizedSelection(
   return { provider, model: requested.slice(separator + 1) };
 }
 
-function exactCatalogModel(models: readonly CatalogModel[], requested: string): CatalogModel {
-  const matches = models.filter(
-    (model) => model.modelId === requested || model.aliases.includes(requested)
-  );
-  const [onlyMatch] = matches;
-  if (onlyMatch !== undefined && matches.length === 1) {
-    return onlyMatch;
+function matchingCatalogModels(
+  models: readonly CatalogModel[],
+  requested: string
+): readonly CatalogModel[] {
+  return models.filter((model) => model.modelId === requested || model.aliases.includes(requested));
+}
+
+async function customPathCatalogModel(
+  options: LocalpiOptions,
+  provider: string | undefined,
+  requested: string
+): Promise<CatalogModel | undefined> {
+  if ((provider !== undefined && provider !== "llama-server") || !isGgufPathRequest(requested)) {
+    return undefined;
   }
-  if (matches.length > 1) {
-    throw new Error(
-      `model ${requested} is available from multiple providers; choose one with --provider:\n${modelChoiceList(matches)}`
-    );
-  }
-  throw new Error(`model ${requested} is not available; choices:\n${modelChoiceList(models)}`);
+  const resolved = await resolveLlamaModelForStart(requested, options);
+  return {
+    providerId: "llama-server",
+    providerName: "llama-server",
+    runtime: "managed-llama-server",
+    baseUrl: llamaBaseUrl(options),
+    modelId: resolved.id,
+    aliases: [requested],
+    displayName: `llama-server / ${resolved.name}`,
+    maxTokens: options.maxTokens,
+    capabilities: ["text"],
+    availability: "startable",
+    ...optionalContextWindow(options.contextWindow ?? resolved.contextWindow)
+  };
+}
+
+function isGgufPathRequest(value: string): boolean {
+  return value.endsWith(".gguf") || value.includes("/") || value.includes("\\");
 }
 
 function startableFallback(models: readonly CatalogModel[]): CatalogModel | undefined {
@@ -444,7 +495,7 @@ async function startSelectedLlamaRuntime(
   selected: CatalogModel,
   catalog: ModelCatalog
 ): Promise<RuntimeConnection> {
-  const model = await resolveLlamaModelForStart(selected.modelId, options);
+  const model = await resolveLlamaModelForStart(selected.aliases[0] ?? selected.modelId, options);
   const runtime = await ensureLlamaServer(options, llamaModelForStart(model, options));
   const loadedSelected = catalogModelFromModelInfo(
     selected.providerId,

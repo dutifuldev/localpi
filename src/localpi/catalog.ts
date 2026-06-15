@@ -112,8 +112,9 @@ async function discoverManagedLlamaProvider(
   options: LocalpiOptions
 ): Promise<ModelCatalog> {
   const baseUrl = llamaBaseUrl(options);
-  const loaded = await loadedLlamaModels(config, options, baseUrl);
-  const startable = await startableLlamaModels(config, options, baseUrl, loaded.models);
+  const aliases = await listModelAliases();
+  const loaded = await loadedLlamaModels(config, options, baseUrl, aliases);
+  const startable = await startableLlamaModels(config, options, baseUrl, loaded.models, aliases);
   return {
     models: [...loaded.models, ...startable],
     warnings: loaded.warnings
@@ -123,7 +124,8 @@ async function discoverManagedLlamaProvider(
 async function loadedLlamaModels(
   config: ProviderConfig,
   options: LocalpiOptions,
-  baseUrl: string
+  baseUrl: string,
+  aliases: Awaited<ReturnType<typeof listModelAliases>>
 ): Promise<ModelCatalog> {
   const models = await getLlamaServerModels(options);
   if (models === undefined) {
@@ -140,7 +142,7 @@ async function loadedLlamaModels(
         runtime: "managed-llama-server",
         baseUrl,
         modelId: model.id,
-        aliases: [],
+        aliases: aliases.filter((alias) => alias.id === model.id).map((alias) => alias.name),
         displayName: `${config.name} / ${model.id}`,
         maxTokens: options.maxTokens,
         capabilities: ["text"],
@@ -156,10 +158,10 @@ async function startableLlamaModels(
   config: ProviderConfig,
   options: LocalpiOptions,
   baseUrl: string,
-  loaded: readonly CatalogModel[]
+  loaded: readonly CatalogModel[],
+  aliases: Awaited<ReturnType<typeof listModelAliases>>
 ): Promise<readonly CatalogModel[]> {
   const loadedIds = new Set(loaded.map((model) => model.modelId));
-  const aliases = await listModelAliases();
   const startable = await Promise.all(
     aliases.map(async (alias): Promise<CatalogModel | undefined> => {
       if (loadedIds.has(alias.id)) {

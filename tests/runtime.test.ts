@@ -344,6 +344,53 @@ describe("runtime resolution", () => {
     });
   });
 
+  it("starts explicit GGUF paths through the auto runtime", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await unusedBaseUrl();
+    const serverCommand = await fakeOpenAiLlamaServerCommand(stateDir);
+
+    await expect(
+      resolveRuntime({
+        ...options(),
+        runtime: "auto",
+        stateDir,
+        baseUrl,
+        model: modelPath,
+        serverCommand
+      })
+    ).resolves.toMatchObject({
+      runtime: "llama-server",
+      providerId: "llama-server",
+      model: "custom-model"
+    });
+    await stopManagedLlamaServer({ ...options(), stateDir });
+  });
+
+  it("selects already-loaded llama-server models by alias in auto runtime", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("custom-id", 4096);
+    const modelsFile = path.join(stateDir, "models.json");
+    await writeFile(
+      modelsFile,
+      JSON.stringify({ models: { custom: { id: "custom-id", path: modelPath } } })
+    );
+    const previousModelsFile = process.env["LOCALPI_MODELS_FILE"];
+    process.env["LOCALPI_MODELS_FILE"] = modelsFile;
+
+    try {
+      await expect(
+        resolveRuntime({ ...options(), runtime: "auto", stateDir, baseUrl, model: "custom" })
+      ).resolves.toMatchObject({
+        runtime: "llama-server",
+        providerId: "llama-server",
+        model: "custom-id",
+        contextWindow: 4096
+      });
+    } finally {
+      restoreOptionalEnv("LOCALPI_MODELS_FILE", previousModelsFile);
+    }
+  });
+
   it("computes the effective base URL per runtime", () => {
     expect(effectiveBaseUrl(options())).toBe("http://127.0.0.1:18194/v1");
     expect(effectiveBaseUrl({ ...options(), runtime: "lmstudio" })).toBe(
