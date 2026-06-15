@@ -687,6 +687,22 @@ describe("runtime resolution", () => {
     }
   });
 
+  it("preserves reasoning metadata for already-loaded llama-server reasoning models", async () => {
+    const baseUrl = await startModelServer("gemma-4-12b-it", 32768);
+
+    await expect(
+      resolveRuntime({
+        ...options(),
+        runtime: "llama-server",
+        baseUrl,
+        model: "gemma-4-12b-it"
+      })
+    ).resolves.toMatchObject({
+      model: "gemma-4-12b-it",
+      catalogModels: [{ modelId: "gemma-4-12b-it", reasoning: true }]
+    });
+  });
+
   it("does not probe the managed endpoint as an external provider", async () => {
     const { stateDir, modelPath } = await tempRuntimeState();
     const baseUrl = await startModelServer("custom-id", 4096);

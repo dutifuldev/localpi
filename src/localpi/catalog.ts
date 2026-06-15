@@ -232,7 +232,7 @@ function externalReasoningConfig(modelId: string): {
   return {};
 }
 
-function managedModelSupportsReasoning(modelId: string): boolean {
+export function managedModelSupportsReasoning(modelId: string): boolean {
   const normalized = modelId.toLowerCase();
   return (
     normalized.includes("reason") ||
