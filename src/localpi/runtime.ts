@@ -528,7 +528,7 @@ async function resolveSelectedLlamaRuntime(
 ): Promise<RuntimeConnection> {
   const existing =
     selected.availability === "loaded"
-      ? await existingLlamaRuntime(options, selected.aliases[0] ?? selected.modelId)
+      ? await existingLlamaRuntime(options, selected.modelId)
       : undefined;
   if (existing !== undefined) {
     const selectedModel = managedCatalogModelFromConnection(options, selected, existing);

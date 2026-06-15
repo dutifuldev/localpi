@@ -509,6 +509,49 @@ describe("runtime resolution", () => {
     }
   });
 
+  it("reuses loaded llama-server aliases while external providers are loaded", async () => {
+    const { stateDir, modelPath } = await tempRuntimeState();
+    const baseUrl = await startModelServer("custom-id", 4096);
+    const externalBaseUrl = await startModelServer("qwen-vllm", 131072);
+    const modelsFile = path.join(stateDir, "models.json");
+    await writeFile(
+      modelsFile,
+      JSON.stringify({
+        providers: {
+          vllm: {
+            type: "openai-compatible",
+            name: "vLLM",
+            baseUrl: externalBaseUrl,
+            discover: true
+          }
+        },
+        models: { custom: { id: "custom-id", path: modelPath } }
+      })
+    );
+    const previousModelsFile = process.env["LOCALPI_MODELS_FILE"];
+    process.env["LOCALPI_MODELS_FILE"] = modelsFile;
+
+    try {
+      await expect(
+        resolveRuntime({
+          ...options(),
+          runtime: "auto",
+          stateDir,
+          baseUrl,
+          provider: "llama-server",
+          model: "custom"
+        })
+      ).resolves.toMatchObject({
+        runtime: "llama-server",
+        providerId: "llama-server",
+        model: "custom-id",
+        contextWindow: 4096
+      });
+    } finally {
+      restoreOptionalEnv("LOCALPI_MODELS_FILE", previousModelsFile);
+    }
+  });
+
   it("reports auto status without starting startable llama-server models", async () => {
     const { stateDir, modelPath } = await tempRuntimeState();
     const modelsFile = path.join(stateDir, "models.json");
