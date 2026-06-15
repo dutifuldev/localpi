@@ -50,7 +50,7 @@ function options(stateDir: string): LocalpiOptions {
     baseUrl: undefined,
     model: "gemma-12b",
     provider: undefined,
-    providerId: "local-openai",
+    customProviderId: "local-openai",
     providersFile: undefined,
     stateDir,
     sessionDir: path.join(stateDir, "sessions"),

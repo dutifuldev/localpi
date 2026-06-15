@@ -66,7 +66,7 @@ function options(stateDir: string): LocalpiOptions {
     baseUrl: "http://127.0.0.1:1234/v1",
     model: "auto",
     provider: undefined,
-    providerId: "local-openai",
+    customProviderId: "local-openai",
     providersFile: undefined,
     stateDir,
     sessionDir: path.join(stateDir, "sessions"),

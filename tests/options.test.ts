@@ -101,7 +101,7 @@ describe("localpi option parsing", () => {
     expect(options).toMatchObject({
       model: "custom",
       provider: "vllm",
-      providerId: "my-provider",
+      customProviderId: "my-provider",
       providersFile: "/tmp/localpi-providers.json",
       stateDir: "/tmp/localpi-state",
       sessionDir: "/tmp/localpi-sessions",

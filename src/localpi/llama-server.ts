@@ -588,6 +588,9 @@ function startupTimeoutMs(): number {
 }
 
 async function lmStudioWarnings(options: LocalpiOptions): Promise<readonly string[]> {
+  if (process.env["LOCALPI_LMSTUDIO_SAFETY_PROBE"] === "0") {
+    return [];
+  }
   if (usesLmStudioProbeEndpoint(options)) {
     return [];
   }

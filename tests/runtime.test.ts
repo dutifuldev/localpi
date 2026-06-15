@@ -6,7 +6,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { LocalpiOptions } from "../src/localpi/options.js";
 import { ensureLlamaServer, stopManagedLlamaServer } from "../src/localpi/llama-server.js";
@@ -16,8 +16,14 @@ describe("runtime resolution", () => {
   const servers: ReturnType<typeof createServer>[] = [];
   const children: ChildProcess[] = [];
   const tempDirs: string[] = [];
+  const previousSafetyProbe = process.env["LOCALPI_LMSTUDIO_SAFETY_PROBE"];
+
+  beforeEach(() => {
+    process.env["LOCALPI_LMSTUDIO_SAFETY_PROBE"] = "0";
+  });
 
   afterEach(async () => {
+    restoreOptionalEnv("LOCALPI_LMSTUDIO_SAFETY_PROBE", previousSafetyProbe);
     for (const child of children) {
       if (child.pid !== undefined && isAlive(child.pid)) {
         child.kill("SIGKILL");
@@ -926,6 +932,7 @@ describe("runtime resolution", () => {
   it("recovers managed model metadata when resolution fails and the server is down", async () => {
     const { stateDir, modelPath } = await tempRuntimeState();
     const baseUrl = await unusedBaseUrl();
+    const providersFile = await disabledBuiltInProvidersFile(stateDir);
     const child = spawnFakeLlamaServer(modelPath);
     await writeMetadata(stateDir, {
       pid: child.pid ?? 0,
@@ -946,6 +953,7 @@ describe("runtime resolution", () => {
         stateDir,
         baseUrl,
         model: "managed-model",
+        providersFile,
         serverCommand: "/definitely/missing/localpi-llama-server"
       })
     ).rejects.toThrow(/failed to start llama-server|LM Studio also reports loaded models/);
@@ -955,6 +963,7 @@ describe("runtime resolution", () => {
   it("restarts a managed llama-server when the requested context changes", async () => {
     const { stateDir, modelPath } = await tempRuntimeState();
     const baseUrl = await startModelServer("custom-model", 32768);
+    const providersFile = await disabledBuiltInProvidersFile(stateDir);
     const child = spawnFakeLlamaServer(modelPath);
     const serverCommand = "/definitely/missing/localpi-llama-server";
     await writeMetadata(stateDir, {
@@ -977,6 +986,7 @@ describe("runtime resolution", () => {
         baseUrl,
         model: "custom-model",
         contextWindow: 65536,
+        providersFile,
         serverCommand
       })
     ).rejects.toThrow(/failed to start llama-server|LM Studio also reports loaded models/);
@@ -1300,7 +1310,7 @@ function options(): LocalpiOptions {
     baseUrl: undefined,
     model: "gemma-12b",
     provider: undefined,
-    providerId: "local-openai",
+    customProviderId: "local-openai",
     providersFile: undefined,
     stateDir,
     sessionDir: path.join(stateDir, "sessions"),
