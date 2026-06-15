@@ -83,7 +83,7 @@ async function discoverOpenAiCompatibleProvider(
       warnings: []
     };
   } catch (error) {
-    if (explicitProviderSelected(options, config.id)) {
+    if (explicitOpenAiProviderSelected(options, config.id)) {
       throw error;
     }
     return { models: [], warnings: [`${config.name} is not responding at ${config.baseUrl}`] };
@@ -323,10 +323,6 @@ function dedupeProviderConfigs(configs: readonly ProviderConfig[]): readonly Pro
     byId.set(config.id, config);
   }
   return [...byId.values()];
-}
-
-function explicitProviderSelected(options: LocalpiOptions, providerId: string): boolean {
-  return options.provider === providerId;
 }
 
 function requiredBaseUrl(options: LocalpiOptions): string {

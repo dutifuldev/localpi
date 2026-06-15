@@ -132,9 +132,9 @@ async function resolveLlamaRuntime(options: LocalpiOptions): Promise<RuntimeConn
     return existing;
   }
   const model = await resolveLlamaModelForStart(requested, options);
-  const runtime = await ensureLlamaServer(options, {
-    ...llamaModelForStart(model, options)
-  });
+  const modelForStart = llamaModelForStart(model, options);
+  await assertDirectLlamaStartIsSafe(options, modelForStart);
+  const runtime = await ensureLlamaServer(options, modelForStart);
   return {
     runtime: runtime.managed ? "llama-server" : "llama-server/external",
     providerId: "llama-server",
@@ -555,6 +555,24 @@ async function startSelectedLlamaRuntime(
     models: replaceManagedLoadedModels(catalog.models, selected, [loadedSelected]),
     warnings: [...catalog.warnings, ...runtime.warnings]
   });
+}
+
+async function assertDirectLlamaStartIsSafe(
+  options: LocalpiOptions,
+  model: ReturnType<typeof llamaModelForStart>
+): Promise<void> {
+  const catalog = await discoverModelCatalog({
+    ...options,
+    runtime: "auto",
+    provider: undefined,
+    model: "auto"
+  });
+  try {
+    assertNoLoadedExternalModels(catalog);
+  } catch (error) {
+    await stopStaleManagedLlamaServer(options, model);
+    throw error;
+  }
 }
 
 async function stopStaleManagedLlamaServer(
