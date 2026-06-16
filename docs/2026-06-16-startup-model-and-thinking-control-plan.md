@@ -18,9 +18,10 @@ Startup selection is for models only. There is no startup thinking picker.
 
 - `localpi` discovers all usable local providers before Pi starts.
 - If exactly one usable model is available, localpi starts Pi with that model.
-- If multiple usable models are available in an interactive terminal, localpi shows a model picker.
+- If multiple usable models are available in an interactive terminal, localpi launches Pi with a bootstrap model and Pi opens its native model selector at startup.
 - If no external model is available, localpi may fall back to a managed `llama-server` model.
-- Explicit `--provider`, `--runtime`, and `--model` values bypass the startup model picker.
+- Explicit `--provider` and concrete `--model` values bypass the startup model picker.
+- Explicit `--runtime` values scope discovery but do not disable the startup selector by themselves.
 - Non-interactive runs never show a picker.
 - Pi receives the launch-time model catalog so `/model` can switch across discovered providers and models.
 - Thinking starts as `off` unless `--thinking` or `LOCALPI_THINKING` sets another startup level.
@@ -43,7 +44,8 @@ Selection happens after provider discovery and before Pi config generation.
 
 Interactive behavior:
 
-- If no explicit model was requested and more than one usable model exists, show a model picker.
+- If no explicit model was requested and more than one usable model exists, select a deterministic bootstrap model only so Pi can start.
+- In the same launch, generate a startup extension that opens Pi's native `ModelSelectorComponent`.
 - Label options with provider and model, for example `LM Studio / qwen3.6-35b-a3b-mtp`.
 - Prefer a stable ordering so repeated launches are predictable.
 - Let Enter choose the first ranked model.
@@ -52,7 +54,7 @@ Non-interactive behavior:
 
 - Do not prompt.
 - Use a deterministic default when one exists.
-- If the default is ambiguous, fail with a clear message listing usable `--provider` and `--model` choices.
+- If multiple loaded models match, use the first deterministic bootstrap model and let automation pin another model with `--provider` and `--model` when needed.
 
 Explicit selection behavior:
 
@@ -73,7 +75,7 @@ Generated Pi config should include:
 - reasoning metadata when known
 - provider compatibility metadata when needed, such as Qwen or DeepSeek thinking format
 
-Pi owns the `/model` command. Localpi's job is to give Pi a complete model catalog at launch.
+Pi owns the `/model` command and the native startup model selector UI. Localpi's job is to give Pi a complete model catalog at launch and request that native selector when startup model choice is needed.
 
 Live model refresh after Pi starts is out of scope for this plan. That should be a future Pi/provider integration.
 
@@ -104,6 +106,7 @@ Managed `llama-server` caveat:
 
 - [x] Discover a normalized launch-time model catalog across providers.
 - [x] Add startup model selection when multiple models are available interactively.
+- [x] Use Pi's native model selector UI at startup instead of a localpi-owned terminal prompt.
 - [x] Pass the launch-time catalog into generated Pi model config.
 - [x] Keep `/model` owned by Pi.
 - [x] Add reasoning and thinking-format metadata for known local reasoning models.

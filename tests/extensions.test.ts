@@ -48,6 +48,26 @@ describe("Pi extensions", () => {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
+
+  it("writes a Pi-native startup model selector extension when requested", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-ext-"));
+    try {
+      const bundle = await writeDefaultExtensions(options(stateDir), {
+        startupModelSelector: true
+      });
+      expect(bundle.paths).toHaveLength(4);
+      const selector = await readFile(bundle.paths[0] ?? "", "utf8");
+      expect(selector).toContain("ModelSelectorComponent");
+      expect(selector).toContain('pi.on("session_start"');
+      expect(selector).toContain("ctx.ui.custom");
+      expect(selector).toContain("pi.setModel(selected)");
+      expect(selector).not.toContain("readline");
+      const thinking = await readFile(bundle.paths[1] ?? "", "utf8");
+      expect(thinking).toContain('pi.registerCommand("thinking"');
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
 });
 
 function options(stateDir: string): LocalpiOptions {

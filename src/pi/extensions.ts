@@ -8,12 +8,29 @@ export type ExtensionBundle = {
   readonly systemPrompt: string;
 };
 
-export async function writeDefaultExtensions(options: LocalpiOptions): Promise<ExtensionBundle> {
+export type ExtensionOptions = {
+  readonly startupModelSelector?: boolean;
+};
+
+export async function writeDefaultExtensions(
+  options: LocalpiOptions,
+  extensionOptions: ExtensionOptions = {}
+): Promise<ExtensionBundle> {
   const extensionDir = path.join(options.stateDir, "pi-extensions");
   await mkdir(extensionDir, { recursive: true });
-  const paths: string[] = [
+  const paths: string[] = [];
+  if (extensionOptions.startupModelSelector === true) {
+    paths.push(
+      await writeExtension(
+        extensionDir,
+        "startup-model-selector.ts",
+        startupModelSelectorExtensionSource()
+      )
+    );
+  }
+  paths.push(
     await writeExtension(extensionDir, "thinking-control.ts", thinkingControlExtensionSource())
-  ];
+  );
   if (options.approval) {
     paths.push(await writeExtension(extensionDir, "tool-approval.ts", approvalExtensionSource()));
   }
@@ -30,6 +47,54 @@ async function writeExtension(extensionDir: string, name: string, source: string
   const extensionPath = path.join(extensionDir, name);
   await writeFile(extensionPath, source, "utf8");
   return extensionPath;
+}
+
+function startupModelSelectorExtensionSource(): string {
+  return `import type { ExtensionAPI, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
+
+type SelectedModel = Parameters<ExtensionAPI["setModel"]>[0];
+
+export default function localpiStartupModelSelector(pi: ExtensionAPI): void {
+  let opened = false;
+
+  pi.on("session_start", async (event, ctx) => {
+    if (opened || event.reason !== "startup" || ctx.mode !== "tui") {
+      return;
+    }
+
+    const availableModels = ctx.modelRegistry.getAvailable();
+    if (availableModels.length <= 1) {
+      return;
+    }
+
+    opened = true;
+    const selected = await ctx.ui.custom<SelectedModel | undefined>((tui, _theme, _keybindings, done) => {
+      const settings = {
+        setDefaultModelAndProvider: () => {}
+      } as unknown as SettingsManager;
+      return new ModelSelectorComponent(
+        tui,
+        ctx.model,
+        settings,
+        ctx.modelRegistry,
+        [],
+        (model) => done(model),
+        () => done(undefined)
+      );
+    });
+
+    if (selected === undefined) {
+      return;
+    }
+
+    const ok = await pi.setModel(selected);
+    if (!ok) {
+      ctx.ui.notify(\`No API key for \${selected.provider}/\${selected.id}\`, "error");
+    }
+  });
+}
+`;
 }
 
 function localpiSystemPrompt(approval: boolean): string {

@@ -3,12 +3,10 @@ import { customPathCatalogModel } from "./managed-runtime.js";
 import { defaultLlamaModelName } from "./models.js";
 import type { LocalpiOptions } from "./options.js";
 import { modelChoiceList } from "./runtime-connection.js";
-import type { ModelSelector } from "./runtime-types.js";
 
 export async function selectCatalogModel(
   options: LocalpiOptions,
-  catalog: ModelCatalog,
-  selectModel: ModelSelector | undefined
+  catalog: ModelCatalog
 ): Promise<CatalogModel> {
   const selection = normalizedSelection(options, catalog.models);
   const providerFiltered = modelsForProvider(catalog.models, selection.provider);
@@ -29,7 +27,7 @@ export async function selectCatalogModel(
       selection.model
     );
   }
-  return selectAutomaticCatalogModel(providerFiltered, catalog.warnings, selectModel);
+  return selectAutomaticCatalogModel(providerFiltered, catalog.warnings);
 }
 
 async function selectExplicitCatalogModel(
@@ -55,24 +53,14 @@ async function selectExplicitCatalogModel(
   throw new Error(`model ${requested} is not available; choices:\n${modelChoiceList(models)}`);
 }
 
-async function selectAutomaticCatalogModel(
+function selectAutomaticCatalogModel(
   models: readonly CatalogModel[],
-  warnings: readonly string[],
-  selectModel: ModelSelector | undefined
-): Promise<CatalogModel> {
+  warnings: readonly string[]
+): CatalogModel {
   const loaded = models.filter((model) => model.availability === "loaded");
   const [onlyLoaded] = loaded;
-  if (onlyLoaded !== undefined && loaded.length === 1) {
+  if (onlyLoaded !== undefined) {
     return onlyLoaded;
-  }
-  if (loaded.length > 1) {
-    const selected = selectModel === undefined ? undefined : await selectModel({ models: loaded });
-    if (selected !== undefined) {
-      return selected;
-    }
-    throw new Error(
-      `multiple loaded models available; choose one with --provider and --model:\n${modelChoiceList(loaded)}`
-    );
   }
   const fallback = startableFallback(models);
   if (fallback !== undefined) {

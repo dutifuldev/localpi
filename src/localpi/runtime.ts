@@ -9,27 +9,24 @@ import {
 import { resolveLlamaRuntime, resolveSelectedLlamaRuntime } from "./managed-runtime.js";
 import { selectCatalogModel } from "./runtime-selection.js";
 import type { LocalpiOptions } from "./options.js";
-import type { ModelSelector, RuntimeConnection } from "./runtime-types.js";
+import type { RuntimeConnection } from "./runtime-types.js";
 
-export type { ModelSelectionRequest, ModelSelector, RuntimeConnection } from "./runtime-types.js";
+export type { RuntimeConnection } from "./runtime-types.js";
 export { connectionStatus } from "./runtime-connection.js";
 
-export async function resolveRuntime(
-  options: LocalpiOptions,
-  selectModel?: ModelSelector
-): Promise<RuntimeConnection> {
+export async function resolveRuntime(options: LocalpiOptions): Promise<RuntimeConnection> {
   if (options.runtime === "auto") {
-    return resolveCatalogRuntime(options, selectModel);
+    return resolveCatalogRuntime(options);
   }
   switch (options.runtime) {
     case "llama-server":
       return resolveLlamaRuntime(options);
     case "lmstudio":
-      return resolveCatalogRuntime(options, selectModel);
+      return resolveCatalogRuntime(options);
     case "vllm":
-      return resolveCatalogRuntime(options, selectModel);
+      return resolveCatalogRuntime(options);
     case "openai-compatible":
-      return resolveCatalogRuntime(options, selectModel);
+      return resolveCatalogRuntime(options);
   }
 }
 
@@ -76,12 +73,9 @@ export function effectiveBaseUrl(options: LocalpiOptions): string {
   return options.baseUrl ?? defaultExternalBaseUrl(options.runtime);
 }
 
-async function resolveCatalogRuntime(
-  options: LocalpiOptions,
-  selectModel: ModelSelector | undefined
-): Promise<RuntimeConnection> {
+async function resolveCatalogRuntime(options: LocalpiOptions): Promise<RuntimeConnection> {
   const catalog = await discoverModelCatalog(options);
-  const selected = await selectCatalogModel(options, catalog, selectModel);
+  const selected = await selectCatalogModel(options, catalog);
   if (selected.runtime === "managed-llama-server") {
     return resolveSelectedLlamaRuntime(options, selected, catalog);
   }

@@ -877,6 +877,19 @@ describe("runtime resolution", () => {
     ).resolves.toContain("loaded models: lmstudio/first, lmstudio/second");
   });
 
+  it("uses the first loaded model as the Pi bootstrap model when multiple are loaded", async () => {
+    const baseUrl = await startModelListServer([{ id: "first" }, { id: "second" }]);
+
+    await expect(
+      resolveRuntime({ ...options(), runtime: "lmstudio", baseUrl, model: "auto" })
+    ).resolves.toMatchObject({
+      runtime: "lmstudio",
+      model: "first",
+      availableModels: ["first", "second"],
+      catalogModels: [{ modelId: "first" }, { modelId: "second" }]
+    });
+  });
+
   it("reports no loaded models when auto discovery finds no usable models", async () => {
     const { stateDir } = await tempRuntimeState();
     const providersFile = await disabledBuiltInProvidersFile(stateDir);
