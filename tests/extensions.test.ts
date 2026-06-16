@@ -53,7 +53,12 @@ describe("Pi extensions", () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-ext-"));
     try {
       const bundle = await writeDefaultExtensions(options(stateDir), {
-        startupModelSelector: {}
+        startupModelSelector: {
+          models: [
+            { provider: "lmstudio", id: "gemma" },
+            { provider: "vllm", id: "qwen" }
+          ]
+        }
       });
       expect(bundle.paths).toHaveLength(4);
       const selector = await readFile(bundle.paths[0] ?? "", "utf8");
@@ -61,7 +66,8 @@ describe("Pi extensions", () => {
       expect(selector).toContain('pi.on("session_start"');
       expect(selector).toContain("ctx.ui.custom");
       expect(selector).toContain("pi.setModel(selected)");
-      expect(selector).toContain("const scopedProviderId: string | undefined = undefined");
+      expect(selector).toContain('"provider":"lmstudio","id":"gemma"');
+      expect(selector).toContain("startupModelRegistry(ctx.modelRegistry)");
       expect(selector).not.toContain("readline");
       const thinking = await readFile(bundle.paths[1] ?? "", "utf8");
       expect(thinking).toContain('pi.registerCommand("thinking"');
@@ -74,13 +80,16 @@ describe("Pi extensions", () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-ext-"));
     try {
       const bundle = await writeDefaultExtensions(options(stateDir), {
-        startupModelSelector: { scopedProviderId: "lmstudio" }
+        startupModelSelector: {
+          models: [
+            { provider: "lmstudio", id: "first" },
+            { provider: "lmstudio", id: "second" }
+          ]
+        }
       });
       const selector = await readFile(bundle.paths[0] ?? "", "utf8");
-      expect(selector).toContain('const scopedProviderId: string | undefined = "lmstudio"');
-      expect(selector).toContain(
-        "availableModels.filter((model) => model.provider === scopedProviderId)"
-      );
+      expect(selector).toContain('"provider":"lmstudio","id":"first"');
+      expect(selector).toContain("startupModelKeys.has(modelKey(model))");
       expect(selector).toContain("selectableModels.map((model) => ({ model }))");
     } finally {
       await rm(stateDir, { recursive: true, force: true });

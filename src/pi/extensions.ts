@@ -13,7 +13,12 @@ export type ExtensionOptions = {
 };
 
 export type StartupModelSelectorOptions = {
-  readonly scopedProviderId?: string;
+  readonly models: readonly StartupModelSelectorModel[];
+};
+
+export type StartupModelSelectorModel = {
+  readonly provider: string;
+  readonly id: string;
 };
 
 export async function writeDefaultExtensions(
@@ -54,13 +59,13 @@ async function writeExtension(extensionDir: string, name: string, source: string
 }
 
 function startupModelSelectorExtensionSource(options: StartupModelSelectorOptions): string {
-  const scopedProviderSource =
-    options.scopedProviderId === undefined ? "undefined" : JSON.stringify(options.scopedProviderId);
+  const startupModelsSource = JSON.stringify(options.models);
   return `import type { ExtensionAPI, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
 
 type SelectedModel = Parameters<ExtensionAPI["setModel"]>[0];
-const scopedProviderId: string | undefined = ${scopedProviderSource};
+const startupModels = ${startupModelsSource} as const;
+const startupModelKeys = new Set(startupModels.map((model) => modelKey(model)));
 
 export default function localpiStartupModelSelector(pi: ExtensionAPI): void {
   let opened = false;
@@ -70,16 +75,11 @@ export default function localpiStartupModelSelector(pi: ExtensionAPI): void {
       return;
     }
 
-    const availableModels = ctx.modelRegistry.getAvailable();
-    const selectableModels = scopedProviderId === undefined
-      ? availableModels
-      : availableModels.filter((model) => model.provider === scopedProviderId);
+    const selectableModels = startupAvailableModels(ctx.modelRegistry);
     if (selectableModels.length <= 1) {
       return;
     }
-    const scopedModels = scopedProviderId === undefined
-      ? []
-      : selectableModels.map((model) => ({ model }));
+    const scopedModels = selectableModels.map((model) => ({ model }));
 
     opened = true;
     const selected = await ctx.ui.custom<SelectedModel | undefined>((tui, _theme, _keybindings, done) => {
@@ -90,7 +90,7 @@ export default function localpiStartupModelSelector(pi: ExtensionAPI): void {
         tui,
         ctx.model,
         settings,
-        ctx.modelRegistry,
+        startupModelRegistry(ctx.modelRegistry) as typeof ctx.modelRegistry,
         scopedModels,
         (model) => done(model),
         () => done(undefined)
@@ -106,6 +106,33 @@ export default function localpiStartupModelSelector(pi: ExtensionAPI): void {
       ctx.ui.notify(\`No API key for \${selected.provider}/\${selected.id}\`, "error");
     }
   });
+}
+
+function startupAvailableModels(registry: {
+  getAvailable(): SelectedModel[];
+}): SelectedModel[] {
+  return registry.getAvailable().filter((model) => startupModelKeys.has(modelKey(model)));
+}
+
+function startupModelRegistry(registry: {
+  refresh(): void;
+  getError(): string | undefined;
+  getAvailable(): SelectedModel[];
+  find(provider: string, modelId: string): SelectedModel | undefined;
+}): typeof registry {
+  return {
+    refresh: () => registry.refresh(),
+    getError: () => registry.getError(),
+    getAvailable: () => startupAvailableModels(registry),
+    find: (provider, modelId) => {
+      const model = registry.find(provider, modelId);
+      return model !== undefined && startupModelKeys.has(modelKey(model)) ? model : undefined;
+    }
+  };
+}
+
+function modelKey(model: { readonly provider: string; readonly id: string }): string {
+  return \`\${model.provider}\\u0000\${model.id}\`;
 }
 `;
 }

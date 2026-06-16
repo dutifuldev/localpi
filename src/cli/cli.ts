@@ -55,7 +55,7 @@ async function immediateCommandResult(options: ParsedOptions): Promise<CommandRe
 function startupModelSelectorOptions(
   options: ParsedOptions,
   connection: Awaited<ReturnType<typeof resolveRuntime>>
-): { readonly scopedProviderId?: string } | undefined {
+): { readonly models: readonly { readonly provider: string; readonly id: string }[] } | undefined {
   if (!process.stdin.isTTY || !process.stderr.isTTY) {
     return undefined;
   }
@@ -71,5 +71,7 @@ function startupModelSelectorOptions(
   if (loadedModels.length <= 1) {
     return undefined;
   }
-  return scopedProviderId === undefined ? {} : { scopedProviderId };
+  return {
+    models: loadedModels.map((model) => ({ provider: model.providerId, id: model.modelId }))
+  };
 }

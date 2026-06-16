@@ -137,7 +137,7 @@ describe("Pi runtime config", () => {
       expect(lmstudio.models[0]).toMatchObject({
         id: "gemma",
         reasoning: true,
-        contextWindow: 120000
+        contextWindow: 4096
       });
       expect(vllm.models[0]).toMatchObject({
         id: "qwen",
