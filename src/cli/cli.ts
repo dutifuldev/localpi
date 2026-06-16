@@ -57,7 +57,7 @@ function shouldOpenStartupModelSelector(
   if (!process.stdin.isTTY || !process.stderr.isTTY) {
     return false;
   }
-  if (options.provider !== undefined || (options.model !== undefined && options.model !== "auto")) {
+  if (options.model !== undefined && options.model !== "auto") {
     return false;
   }
   return connection.catalogModels.filter((model) => model.availability === "loaded").length > 1;

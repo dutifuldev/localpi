@@ -12,8 +12,12 @@ describe("localpi cli", () => {
   const servers: ReturnType<typeof createServer>[] = [];
   const tempDirs: string[] = [];
   const previousModelsFile = process.env["LOCALPI_MODELS_FILE"];
+  const previousStdinIsTty = process.stdin.isTTY;
+  const previousStderrIsTty = process.stderr.isTTY;
 
   afterEach(async () => {
+    setTty("stdin", previousStdinIsTty);
+    setTty("stderr", previousStderrIsTty);
     if (previousModelsFile === undefined) {
       delete process.env["LOCALPI_MODELS_FILE"];
     } else {
@@ -134,6 +138,33 @@ describe("localpi cli", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("keeps provider-only interactive launches eligible for Pi-native startup selection", async () => {
+    const stateDir = await tempStateDir();
+    const baseUrl = await startModelListServer(["first", "second"]);
+    setTty("stdin", true);
+    setTty("stderr", true);
+
+    const result = await run([
+      "--runtime",
+      "lmstudio",
+      "--provider",
+      "lmstudio",
+      "--base-url",
+      baseUrl,
+      "--state-dir",
+      stateDir,
+      "--session-dir",
+      path.join(stateDir, "sessions"),
+      "--pi-command",
+      "true"
+    ]);
+
+    expect(result).toEqual({ code: 0, stdout: "", stderr: "" });
+    await expect(
+      access(path.join(stateDir, "pi-extensions", "startup-model-selector.ts"))
+    ).resolves.toBeUndefined();
+  });
+
   it("propagates non-zero pi exit codes", async () => {
     const stateDir = await tempStateDir();
     const baseUrl = await startModelServer("served-model", 4096);
@@ -170,6 +201,24 @@ describe("localpi cli", () => {
     return `http://127.0.0.1:${String(address.port)}/v1`;
   }
 
+  async function startModelListServer(models: readonly string[]): Promise<string> {
+    const server = createServer((request, response) => {
+      if (request.url === "/v1/models") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ data: models.map((id) => ({ id, context_length: 4096 })) }));
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    });
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    servers.push(server);
+    const address = server.address() as AddressInfo;
+    return `http://127.0.0.1:${String(address.port)}/v1`;
+  }
+
   async function unusedBaseUrl(): Promise<string> {
     const server = createServer();
     await new Promise<void>((resolve) => {
@@ -193,5 +242,12 @@ describe("localpi cli", () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-cli-"));
     tempDirs.push(stateDir);
     return stateDir;
+  }
+
+  function setTty(stream: "stdin" | "stderr", value: boolean | undefined): void {
+    Object.defineProperty(process[stream], "isTTY", {
+      configurable: true,
+      value
+    });
   }
 });

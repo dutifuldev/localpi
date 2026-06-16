@@ -20,7 +20,7 @@ Startup selection is for models only. There is no startup thinking picker.
 - If exactly one usable model is available, localpi starts Pi with that model.
 - If multiple usable models are available in an interactive terminal, localpi launches Pi with a bootstrap model and Pi opens its native model selector at startup.
 - If no external model is available, localpi may fall back to a managed `llama-server` model.
-- Explicit `--provider` and concrete `--model` values bypass the startup model picker.
+- A concrete `--model` value bypasses the startup model picker. `--provider` alone only scopes the catalog.
 - Explicit `--runtime` values scope discovery but do not disable the startup selector by themselves.
 - Non-interactive runs never show a picker.
 - Pi receives the launch-time model catalog so `/model` can switch across discovered providers and models.
@@ -59,6 +59,7 @@ Non-interactive behavior:
 Explicit selection behavior:
 
 - `--provider <id> --model <id>` selects an exact catalog entry.
+- `--provider <id>` without `--model` scopes startup discovery and still opens the Pi-native picker when multiple loaded models match.
 - `--runtime lmstudio` and `--runtime vllm` select the built-in external provider.
 - Managed `llama-server` aliases continue to work through `--model <alias>`.
 

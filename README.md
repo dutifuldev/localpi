@@ -59,7 +59,7 @@ Custom OpenAI-compatible endpoints are also supported:
 localpi --runtime openai-compatible --base-url http://127.0.0.1:8000/v1 --model my-model
 ```
 
-Use `--provider <id>` with `--model <id>` to select a catalog entry without opening the picker. Localpi avoids loading multiple heavyweight local runtimes at the same time. When using the managed `llama-server` runtime, it either stops its previous managed server or clearly reports what is already running before starting another model.
+Use `--provider <id>` with `--model <id>` to select a catalog entry without opening the picker. `--provider <id>` by itself only scopes the available choices. Localpi avoids loading multiple heavyweight local runtimes at the same time. When using the managed `llama-server` runtime, it either stops its previous managed server or clearly reports what is already running before starting another model.
 
 ## Default Pi Behavior
 

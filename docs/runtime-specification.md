@@ -27,6 +27,7 @@ Localpi:
 - selects the only loaded model automatically
 - opens Pi's native model selector when multiple loaded models are available in an interactive TTY
 - never prompts in non-interactive runs; automation can pin a model with concrete `--provider` and `--model` values
+- treats `--provider` without `--model` as catalog scoping, not as a concrete model choice
 - writes Pi config for all launch-time loaded catalog entries so Pi `/model` can switch among them
 
 ### `llama-server`
