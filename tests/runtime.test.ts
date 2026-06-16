@@ -376,6 +376,40 @@ describe("runtime resolution", () => {
     });
   });
 
+  it("marks Qwen3 model ids with Qwen chat-template thinking format", async () => {
+    const baseUrl = await startModelServer("qwen3.6-35b-a3b-mtp");
+
+    await expect(
+      resolveRuntime({ ...options(), runtime: "lmstudio", baseUrl, model: "auto" })
+    ).resolves.toMatchObject({
+      catalogModels: [
+        {
+          modelId: "qwen3.6-35b-a3b-mtp",
+          reasoning: true,
+          thinkingFormat: "qwen-chat-template"
+        }
+      ]
+    });
+  });
+
+  it("does not mark older Qwen and DeepSeek coder model ids as reasoning models", async () => {
+    const baseUrl = await startModelListServer([
+      { id: "Qwen2.5-Coder-32B" },
+      { id: "DeepSeek-Coder-V2" }
+    ]);
+    const connection = await resolveRuntime({
+      ...options(),
+      runtime: "lmstudio",
+      baseUrl,
+      model: "Qwen2.5-Coder-32B"
+    });
+
+    for (const model of connection.catalogModels) {
+      expect(model).not.toHaveProperty("reasoning");
+      expect(model).not.toHaveProperty("thinkingFormat");
+    }
+  });
+
   it("uses --provider as the direct OpenAI-compatible provider id", async () => {
     const baseUrl = await startModelServer("served-model");
 

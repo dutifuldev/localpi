@@ -223,10 +223,10 @@ function externalReasoningConfig(modelId: string): {
   readonly thinkingFormat?: CatalogThinkingFormat;
 } {
   const normalized = modelId.toLowerCase();
-  if (normalized.includes("deepseek")) {
+  if (isDeepSeekThinkingModel(normalized)) {
     return { reasoning: true, thinkingFormat: "deepseek" };
   }
-  if (normalized.includes("qwen")) {
+  if (isQwenThinkingModel(normalized)) {
     return { reasoning: true, thinkingFormat: "qwen-chat-template" };
   }
   return {};
@@ -237,9 +237,43 @@ export function managedModelSupportsReasoning(modelId: string): boolean {
   return (
     normalized.includes("reason") ||
     normalized.includes("thinking") ||
-    normalized.includes("deepseek") ||
-    normalized.includes("qwen") ||
+    isDeepSeekThinkingModel(normalized) ||
+    isQwenThinkingModel(normalized) ||
     normalized.includes("gpt-oss") ||
     normalized.includes("gemma-4")
   );
+}
+
+function isDeepSeekThinkingModel(normalizedModelId: string): boolean {
+  return (
+    normalizedModelId.includes("deepseek") &&
+    (hasModelToken(normalizedModelId, "r1") ||
+      hasModelToken(normalizedModelId, "v4") ||
+      hasModelToken(normalizedModelId, "4") ||
+      normalizedModelId.includes("reason") ||
+      normalizedModelId.includes("thinking"))
+  );
+}
+
+function isQwenThinkingModel(normalizedModelId: string): boolean {
+  const qwenThinkingMarkers = [
+    "qwq",
+    "qwen3",
+    "qwen-3",
+    "qwen_3",
+    "qwen 3",
+    "qwen4",
+    "qwen-4",
+    "qwen_4",
+    "qwen 4"
+  ];
+  return (
+    qwenThinkingMarkers.some((marker) => normalizedModelId.includes(marker)) ||
+    (normalizedModelId.includes("qwen") &&
+      (normalizedModelId.includes("reason") || normalizedModelId.includes("thinking")))
+  );
+}
+
+function hasModelToken(normalizedModelId: string, token: string): boolean {
+  return normalizedModelId.split(/[^a-z0-9]+/u).includes(token);
 }
