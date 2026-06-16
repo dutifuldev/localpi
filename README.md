@@ -39,7 +39,7 @@ Target default:
 localpi --model gemma-12b
 ```
 
-This uses the default `auto` runtime. If exactly one model is loaded locally, Localpi selects it. If multiple models are loaded in an interactive terminal, Localpi shows a numbered picker. If no external model is loaded, Localpi can fall back to the managed `llama-server` default. For a pure interactive `localpi` launch without `--thinking` or `LOCALPI_THINKING`, Localpi also asks for the startup thinking level.
+This uses the default `auto` runtime. If exactly one model is loaded locally, Localpi selects it. If multiple models are loaded in an interactive terminal, Localpi shows a numbered picker. If no external model is loaded, Localpi can fall back to the managed `llama-server` default. Thinking starts as `off` unless `--thinking` or `LOCALPI_THINKING` sets another startup level.
 
 LM Studio is explicit:
 

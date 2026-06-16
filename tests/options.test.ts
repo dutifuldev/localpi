@@ -39,12 +39,10 @@ describe("localpi option parsing", () => {
 
   it("parses and validates thinking levels", () => {
     expect(parseLocalpiArgs(["--thinking", "low"])).toMatchObject({
-      thinking: "low",
-      thinkingSource: "cli"
+      thinking: "low"
     });
     expect(parseLocalpiArgs(["--thinking", "xhigh"])).toMatchObject({
-      thinking: "xhigh",
-      thinkingSource: "cli"
+      thinking: "xhigh"
     });
     expect(() => parseLocalpiArgs(["--thinking", "banana"])).toThrow(
       "unknown thinking level banana"
@@ -189,16 +187,14 @@ describe("localpi environment defaults", () => {
       provider: "env-provider",
       providersFile: "/tmp/env-providers.json",
       sessionDir: "/tmp/localpi-env-sessions",
-      thinking: "medium",
-      thinkingSource: "env"
+      thinking: "medium"
     });
   });
 
-  it("marks the default thinking level as default sourced", () => {
+  it("defaults thinking to off when LOCALPI_THINKING is not set", () => {
     delete process.env["LOCALPI_THINKING"];
     expect(parseLocalpiArgs([])).toMatchObject({
-      thinking: "off",
-      thinkingSource: "default"
+      thinking: "off"
     });
   });
 
