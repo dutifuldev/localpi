@@ -1,6 +1,6 @@
 {
   "name": "localpi",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Pi-compatible local model launcher with managed llama-server support.",
   "type": "module",
   "license": "MIT",
