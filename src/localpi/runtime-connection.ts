@@ -1,4 +1,4 @@
-import type { CatalogModel, ModelCatalog } from "./catalog.js";
+import { managedModelSupportsReasoning, type CatalogModel, type ModelCatalog } from "./catalog.js";
 import type { LocalpiOptions } from "./options.js";
 import type { RuntimeConnection } from "./runtime-types.js";
 
@@ -61,6 +61,9 @@ export function catalogModelFromModelInfo(
     aliases: [],
     displayName: `${providerName} / ${model.id}`,
     maxTokens: options.maxTokens,
+    ...(runtime === "managed-llama-server"
+      ? { reasoning: managedModelSupportsReasoning(model.id) }
+      : {}),
     capabilities: ["text"],
     availability: "loaded",
     ...optionalContextWindow(contextWindow ?? model.contextWindow)

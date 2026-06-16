@@ -13,6 +13,7 @@ import { providerConfigs } from "./provider-registry.js";
 export type ModelAvailability = "loaded" | "startable";
 export type ModelCapability = "text";
 export type CatalogRuntime = "openai-compatible" | "managed-llama-server";
+export type CatalogThinkingFormat = "deepseek" | "qwen-chat-template";
 
 export type CatalogModel = {
   readonly providerId: string;
@@ -24,6 +25,8 @@ export type CatalogModel = {
   readonly displayName: string;
   readonly contextWindow?: number;
   readonly maxTokens?: number;
+  readonly reasoning?: boolean;
+  readonly thinkingFormat?: CatalogThinkingFormat;
   readonly capabilities: readonly ModelCapability[];
   readonly availability: ModelAvailability;
 };
@@ -98,6 +101,7 @@ function openAiCatalogModel(
     aliases: [],
     displayName: `${config.name} / ${model.id}`,
     maxTokens: options.maxTokens,
+    ...externalReasoningConfig(model.id),
     capabilities: ["text"],
     availability: "loaded",
     ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow })
@@ -167,6 +171,7 @@ async function loadedLlamaModels(
         aliases: aliases.filter((alias) => alias.id === model.id).map((alias) => alias.name),
         displayName: `${config.name} / ${model.id}`,
         maxTokens: options.maxTokens,
+        reasoning: managedModelSupportsReasoning(model.id),
         capabilities: ["text"],
         availability: "loaded",
         ...(contextWindow === undefined ? {} : { contextWindow })
@@ -200,6 +205,7 @@ async function startableLlamaModels(
           aliases: [alias.name],
           displayName: `${config.name} / ${alias.name}`,
           maxTokens: options.maxTokens,
+          reasoning: managedModelSupportsReasoning(resolved.id),
           capabilities: ["text"] as const,
           availability: "startable" as const,
           ...(resolved.contextWindow === undefined ? {} : { contextWindow: resolved.contextWindow })
@@ -210,4 +216,64 @@ async function startableLlamaModels(
     })
   );
   return startable.filter((model): model is CatalogModel => model !== undefined);
+}
+
+function externalReasoningConfig(modelId: string): {
+  readonly reasoning?: true;
+  readonly thinkingFormat?: CatalogThinkingFormat;
+} {
+  const normalized = modelId.toLowerCase();
+  if (isDeepSeekThinkingModel(normalized)) {
+    return { reasoning: true, thinkingFormat: "deepseek" };
+  }
+  if (isQwenThinkingModel(normalized)) {
+    return { reasoning: true, thinkingFormat: "qwen-chat-template" };
+  }
+  return {};
+}
+
+export function managedModelSupportsReasoning(modelId: string): boolean {
+  const normalized = modelId.toLowerCase();
+  return (
+    normalized.includes("reason") ||
+    normalized.includes("thinking") ||
+    isDeepSeekThinkingModel(normalized) ||
+    isQwenThinkingModel(normalized) ||
+    normalized.includes("gpt-oss") ||
+    normalized.includes("gemma-4")
+  );
+}
+
+function isDeepSeekThinkingModel(normalizedModelId: string): boolean {
+  return (
+    normalizedModelId.includes("deepseek") &&
+    (hasModelToken(normalizedModelId, "r1") ||
+      hasModelToken(normalizedModelId, "v4") ||
+      hasModelToken(normalizedModelId, "4") ||
+      normalizedModelId.includes("reason") ||
+      normalizedModelId.includes("thinking"))
+  );
+}
+
+function isQwenThinkingModel(normalizedModelId: string): boolean {
+  const qwenThinkingMarkers = [
+    "qwq",
+    "qwen3",
+    "qwen-3",
+    "qwen_3",
+    "qwen 3",
+    "qwen4",
+    "qwen-4",
+    "qwen_4",
+    "qwen 4"
+  ];
+  return (
+    qwenThinkingMarkers.some((marker) => normalizedModelId.includes(marker)) ||
+    (normalizedModelId.includes("qwen") &&
+      (normalizedModelId.includes("reason") || normalizedModelId.includes("thinking")))
+  );
+}
+
+function hasModelToken(normalizedModelId: string, token: string): boolean {
+  return normalizedModelId.split(/[^a-z0-9]+/u).includes(token);
 }

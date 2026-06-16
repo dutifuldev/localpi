@@ -8,14 +8,18 @@ import type { LocalpiOptions } from "../src/localpi/options.js";
 import { writeDefaultExtensions } from "../src/pi/extensions.js";
 
 describe("Pi extensions", () => {
-  it("writes approval and token status extensions", async () => {
+  it("writes thinking control, approval, and token status extensions", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-ext-"));
     try {
       const bundle = await writeDefaultExtensions(options(stateDir));
-      expect(bundle.paths).toHaveLength(2);
+      expect(bundle.paths).toHaveLength(3);
       expect(bundle.systemPrompt).toContain("Tool calls require user approval");
-      const approval = await readFile(bundle.paths[0] ?? "", "utf8");
-      const status = await readFile(bundle.paths[1] ?? "", "utf8");
+      const thinking = await readFile(bundle.paths[0] ?? "", "utf8");
+      const approval = await readFile(bundle.paths[1] ?? "", "utf8");
+      const status = await readFile(bundle.paths[2] ?? "", "utf8");
+      expect(thinking).toContain('pi.registerCommand("thinking"');
+      expect(thinking).toContain("pi.setThinkingLevel(level)");
+      expect(thinking).toContain("thinking_level_select");
       expect(approval).toContain("ctx.ui.confirm");
       expect(status).toContain("tok/s");
       expect(status).toContain("message_update");
@@ -28,7 +32,7 @@ describe("Pi extensions", () => {
     }
   });
 
-  it("skips extensions and reports disabled approval when both are off", async () => {
+  it("keeps thinking control and reports disabled approval when optional extensions are off", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-ext-"));
     try {
       const bundle = await writeDefaultExtensions({
@@ -36,8 +40,57 @@ describe("Pi extensions", () => {
         approval: false,
         tokenStatus: false
       });
-      expect(bundle.paths).toHaveLength(0);
+      expect(bundle.paths).toHaveLength(1);
+      const thinking = await readFile(bundle.paths[0] ?? "", "utf8");
+      expect(thinking).toContain('pi.registerCommand("thinking"');
       expect(bundle.systemPrompt).toContain("Tool approval is disabled for this session.");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a Pi-native startup model selector extension when requested", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-ext-"));
+    try {
+      const bundle = await writeDefaultExtensions(options(stateDir), {
+        startupModelSelector: {
+          models: [
+            { provider: "lmstudio", id: "gemma" },
+            { provider: "vllm", id: "qwen" }
+          ]
+        }
+      });
+      expect(bundle.paths).toHaveLength(4);
+      const selector = await readFile(bundle.paths[0] ?? "", "utf8");
+      expect(selector).toContain("ModelSelectorComponent");
+      expect(selector).toContain('pi.on("session_start"');
+      expect(selector).toContain("ctx.ui.custom");
+      expect(selector).toContain("pi.setModel(selected)");
+      expect(selector).toContain('"provider":"lmstudio","id":"gemma"');
+      expect(selector).toContain("startupModelRegistry(ctx.modelRegistry)");
+      expect(selector).not.toContain("readline");
+      const thinking = await readFile(bundle.paths[1] ?? "", "utf8");
+      expect(thinking).toContain('pi.registerCommand("thinking"');
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("scopes the Pi-native startup selector when a provider scope is requested", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-ext-"));
+    try {
+      const bundle = await writeDefaultExtensions(options(stateDir), {
+        startupModelSelector: {
+          models: [
+            { provider: "lmstudio", id: "first" },
+            { provider: "lmstudio", id: "second" }
+          ]
+        }
+      });
+      const selector = await readFile(bundle.paths[0] ?? "", "utf8");
+      expect(selector).toContain('"provider":"lmstudio","id":"first"');
+      expect(selector).toContain("startupModelKeys.has(modelKey(model))");
+      expect(selector).toContain("selectableModels.map((model) => ({ model }))");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

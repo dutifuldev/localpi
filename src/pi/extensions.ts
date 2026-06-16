@@ -8,10 +8,38 @@ export type ExtensionBundle = {
   readonly systemPrompt: string;
 };
 
-export async function writeDefaultExtensions(options: LocalpiOptions): Promise<ExtensionBundle> {
+export type ExtensionOptions = {
+  readonly startupModelSelector?: StartupModelSelectorOptions;
+};
+
+export type StartupModelSelectorOptions = {
+  readonly models: readonly StartupModelSelectorModel[];
+};
+
+export type StartupModelSelectorModel = {
+  readonly provider: string;
+  readonly id: string;
+};
+
+export async function writeDefaultExtensions(
+  options: LocalpiOptions,
+  extensionOptions: ExtensionOptions = {}
+): Promise<ExtensionBundle> {
   const extensionDir = path.join(options.stateDir, "pi-extensions");
   await mkdir(extensionDir, { recursive: true });
   const paths: string[] = [];
+  if (extensionOptions.startupModelSelector !== undefined) {
+    paths.push(
+      await writeExtension(
+        extensionDir,
+        "startup-model-selector.ts",
+        startupModelSelectorExtensionSource(extensionOptions.startupModelSelector)
+      )
+    );
+  }
+  paths.push(
+    await writeExtension(extensionDir, "thinking-control.ts", thinkingControlExtensionSource())
+  );
   if (options.approval) {
     paths.push(await writeExtension(extensionDir, "tool-approval.ts", approvalExtensionSource()));
   }
@@ -28,6 +56,85 @@ async function writeExtension(extensionDir: string, name: string, source: string
   const extensionPath = path.join(extensionDir, name);
   await writeFile(extensionPath, source, "utf8");
   return extensionPath;
+}
+
+function startupModelSelectorExtensionSource(options: StartupModelSelectorOptions): string {
+  const startupModelsSource = JSON.stringify(options.models);
+  return `import type { ExtensionAPI, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
+
+type SelectedModel = Parameters<ExtensionAPI["setModel"]>[0];
+const startupModels = ${startupModelsSource} as const;
+const startupModelKeys = new Set(startupModels.map((model) => modelKey(model)));
+
+export default function localpiStartupModelSelector(pi: ExtensionAPI): void {
+  let opened = false;
+
+  pi.on("session_start", async (event, ctx) => {
+    if (opened || event.reason !== "startup" || ctx.mode !== "tui") {
+      return;
+    }
+
+    const selectableModels = startupAvailableModels(ctx.modelRegistry);
+    if (selectableModels.length <= 1) {
+      return;
+    }
+    const scopedModels = selectableModels.map((model) => ({ model }));
+
+    opened = true;
+    const selected = await ctx.ui.custom<SelectedModel | undefined>((tui, _theme, _keybindings, done) => {
+      const settings = {
+        setDefaultModelAndProvider: () => {}
+      } as unknown as SettingsManager;
+      return new ModelSelectorComponent(
+        tui,
+        ctx.model,
+        settings,
+        startupModelRegistry(ctx.modelRegistry) as typeof ctx.modelRegistry,
+        scopedModels,
+        (model) => done(model),
+        () => done(undefined)
+      );
+    });
+
+    if (selected === undefined) {
+      return;
+    }
+
+    const ok = await pi.setModel(selected);
+    if (!ok) {
+      ctx.ui.notify(\`No API key for \${selected.provider}/\${selected.id}\`, "error");
+    }
+  });
+}
+
+function startupAvailableModels(registry: {
+  getAvailable(): SelectedModel[];
+}): SelectedModel[] {
+  return registry.getAvailable().filter((model) => startupModelKeys.has(modelKey(model)));
+}
+
+function startupModelRegistry(registry: {
+  refresh(): void;
+  getError(): string | undefined;
+  getAvailable(): SelectedModel[];
+  find(provider: string, modelId: string): SelectedModel | undefined;
+}): typeof registry {
+  return {
+    refresh: () => registry.refresh(),
+    getError: () => registry.getError(),
+    getAvailable: () => startupAvailableModels(registry),
+    find: (provider, modelId) => {
+      const model = registry.find(provider, modelId);
+      return model !== undefined && startupModelKeys.has(modelKey(model)) ? model : undefined;
+    }
+  };
+}
+
+function modelKey(model: { readonly provider: string; readonly id: string }): string {
+  return \`\${model.provider}\\u0000\${model.id}\`;
+}
+`;
 }
 
 function localpiSystemPrompt(approval: boolean): string {
@@ -217,6 +324,63 @@ function textUpdateFromUnknown(value: unknown): TextUpdate {
     }
   }
   return { kind: "snapshot", text: "" };
+}
+`;
+}
+
+function thinkingControlExtensionSource(): string {
+  return `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+const levels: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+
+export default function localpiThinkingControl(pi: ExtensionAPI): void {
+  pi.registerCommand("thinking", {
+    description: "Set localpi thinking level",
+    getArgumentCompletions: (prefix) => {
+      const trimmed = prefix.trim().toLowerCase();
+      const matches = levels.filter((level) => level.startsWith(trimmed));
+      return matches.length === 0 ? null : matches.map((level) => ({ value: level, label: level }));
+    },
+    handler: async (args, ctx) => {
+      const requested = parseThinkingLevel(args);
+      const level = requested ?? (await promptThinkingLevel(pi.getThinkingLevel(), ctx));
+      if (level === undefined) {
+        return;
+      }
+      pi.setThinkingLevel(level);
+      const actual = pi.getThinkingLevel();
+      ctx.ui.notify(
+        actual === level ? \`thinking: \${actual}\` : \`thinking: \${actual} (clamped from \${level})\`,
+        actual === level ? "info" : "warning"
+      );
+    }
+  });
+
+  pi.on("thinking_level_select", (event, ctx) => {
+    ctx.ui.setStatus("localpi-thinking", \`thinking: \${event.level}\`);
+  });
+
+  pi.on("session_shutdown", (_event, ctx) => {
+    ctx.ui.setStatus("localpi-thinking", undefined);
+  });
+}
+
+async function promptThinkingLevel(
+  current: ThinkingLevel,
+  ctx: { readonly ui: { select(title: string, options: string[]): Promise<string | undefined> } }
+): Promise<ThinkingLevel | undefined> {
+  const selected = await ctx.ui.select(
+    "Thinking level",
+    levels.map((level) => (level === current ? \`\${level} (current)\` : level))
+  );
+  return selected === undefined ? undefined : parseThinkingLevel(selected);
+}
+
+function parseThinkingLevel(value: string): ThinkingLevel | undefined {
+  const normalized = value.trim().split(/\\s+/u)[0]?.toLowerCase();
+  return levels.find((level) => level === normalized);
 }
 `;
 }

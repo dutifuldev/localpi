@@ -39,7 +39,7 @@ Target default:
 localpi --model gemma-12b
 ```
 
-This uses the default `auto` runtime. If exactly one model is loaded locally, Localpi selects it. If multiple models are loaded in an interactive terminal, Localpi shows a numbered picker. If no external model is loaded, Localpi can fall back to the managed `llama-server` default.
+This uses the default `auto` runtime. If exactly one model is loaded locally, Localpi selects it. If multiple models are loaded in an interactive terminal, Localpi boots Pi with a temporary default and opens Pi's native model selector. If no external model is loaded, Localpi can fall back to the managed `llama-server` default. Thinking starts as `off` unless `--thinking` or `LOCALPI_THINKING` sets another startup level.
 
 LM Studio is explicit:
 
@@ -59,7 +59,7 @@ Custom OpenAI-compatible endpoints are also supported:
 localpi --runtime openai-compatible --base-url http://127.0.0.1:8000/v1 --model my-model
 ```
 
-Use `--provider <id>` with `--model <id>` to select a catalog entry without opening the picker. Localpi avoids loading multiple heavyweight local runtimes at the same time. When using the managed `llama-server` runtime, it either stops its previous managed server or clearly reports what is already running before starting another model.
+Use `--provider <id>` with `--model <id>` to select a catalog entry without opening the picker. `--provider <id>` by itself only scopes the available choices. Localpi avoids loading multiple heavyweight local runtimes at the same time. When using the managed `llama-server` runtime, it either stops its previous managed server or clearly reports what is already running before starting another model.
 
 ## Default Pi Behavior
 
@@ -70,6 +70,7 @@ Localpi launches Pi with:
 - an approval gate before every tool call
 - token speed and token count status while responses stream
 - bounded Gemma/llama-server reasoning controlled by `--thinking`
+- an in-session `/thinking` command for changing Pi's active thinking level
 - local state under `~/.local/state/localpi`
 
 The approval gate makes failed or denied tool calls explicit to the model so the model does not claim that a blocked command ran.
@@ -120,6 +121,8 @@ Use a bounded reasoning budget with managed `llama-server`:
 ```bash
 localpi --model gemma-12b --thinking low -p "classify this item"
 ```
+
+In an interactive session, use `/thinking` to pick a level or `/thinking high` to set one directly. This changes Pi's active thinking level for later turns. For managed `llama-server`, the server-side reasoning budget is still chosen at startup because changing it requires restarting the local server process.
 
 For managed `llama-server`, thinking levels map to server-side reasoning:
 

@@ -85,9 +85,11 @@ function modelConfig(
   return withoutUndefined({
     id: model.modelId,
     name: model.displayName,
-    reasoning: false,
+    reasoning: model.reasoning ?? false,
+    compat:
+      model.thinkingFormat === undefined ? undefined : { thinkingFormat: model.thinkingFormat },
     input: ["text"],
-    contextWindow: modelContextWindow(options, connection, model),
+    contextWindow: modelContextWindow(options, model),
     maxTokens: model.maxTokens ?? options.maxTokens,
     cost: {
       input: 0,
@@ -98,13 +100,9 @@ function modelConfig(
   });
 }
 
-function modelContextWindow(
-  options: LocalpiOptions,
-  connection: RuntimeConnection,
-  model: CatalogModel
-): number | undefined {
-  if (model.providerId === connection.providerId && model.modelId === connection.model) {
-    return options.contextWindow ?? model.contextWindow;
+function modelContextWindow(options: LocalpiOptions, model: CatalogModel): number | undefined {
+  if (options.contextWindow !== undefined) {
+    return options.contextWindow;
   }
   return model.contextWindow;
 }
@@ -121,6 +119,7 @@ function fallbackCatalog(connection: RuntimeConnection): readonly CatalogModel[]
       modelId: connection.model,
       aliases: [],
       displayName: `Local model (${connection.model})`,
+      reasoning: false,
       capabilities: ["text"],
       availability: "loaded",
       ...(connection.contextWindow === undefined ? {} : { contextWindow: connection.contextWindow })

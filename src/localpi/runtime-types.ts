@@ -11,9 +11,3 @@ export type RuntimeConnection = {
   readonly contextWindow?: number;
   readonly warnings: readonly string[];
 };
-
-export type ModelSelectionRequest = {
-  readonly models: readonly CatalogModel[];
-};
-
-export type ModelSelector = (request: ModelSelectionRequest) => Promise<CatalogModel | undefined>;

@@ -360,6 +360,56 @@ describe("runtime resolution", () => {
     ).rejects.toThrow("--runtime openai-compatible requires --base-url");
   });
 
+  it("prefers DeepSeek thinking format for DeepSeek distill Qwen model ids", async () => {
+    const baseUrl = await startModelServer("DeepSeek-R1-Distill-Qwen-32B");
+
+    await expect(
+      resolveRuntime({ ...options(), runtime: "lmstudio", baseUrl, model: "auto" })
+    ).resolves.toMatchObject({
+      catalogModels: [
+        {
+          modelId: "DeepSeek-R1-Distill-Qwen-32B",
+          reasoning: true,
+          thinkingFormat: "deepseek"
+        }
+      ]
+    });
+  });
+
+  it("marks Qwen3 model ids with Qwen chat-template thinking format", async () => {
+    const baseUrl = await startModelServer("qwen3.6-35b-a3b-mtp");
+
+    await expect(
+      resolveRuntime({ ...options(), runtime: "lmstudio", baseUrl, model: "auto" })
+    ).resolves.toMatchObject({
+      catalogModels: [
+        {
+          modelId: "qwen3.6-35b-a3b-mtp",
+          reasoning: true,
+          thinkingFormat: "qwen-chat-template"
+        }
+      ]
+    });
+  });
+
+  it("does not mark older Qwen and DeepSeek coder model ids as reasoning models", async () => {
+    const baseUrl = await startModelListServer([
+      { id: "Qwen2.5-Coder-32B" },
+      { id: "DeepSeek-Coder-V2" }
+    ]);
+    const connection = await resolveRuntime({
+      ...options(),
+      runtime: "lmstudio",
+      baseUrl,
+      model: "Qwen2.5-Coder-32B"
+    });
+
+    for (const model of connection.catalogModels) {
+      expect(model).not.toHaveProperty("reasoning");
+      expect(model).not.toHaveProperty("thinkingFormat");
+    }
+  });
+
   it("uses --provider as the direct OpenAI-compatible provider id", async () => {
     const baseUrl = await startModelServer("served-model");
 
@@ -687,6 +737,22 @@ describe("runtime resolution", () => {
     }
   });
 
+  it("preserves reasoning metadata for already-loaded llama-server reasoning models", async () => {
+    const baseUrl = await startModelServer("gemma-4-12b-it", 32768);
+
+    await expect(
+      resolveRuntime({
+        ...options(),
+        runtime: "llama-server",
+        baseUrl,
+        model: "gemma-4-12b-it"
+      })
+    ).resolves.toMatchObject({
+      model: "gemma-4-12b-it",
+      catalogModels: [{ modelId: "gemma-4-12b-it", reasoning: true }]
+    });
+  });
+
   it("does not probe the managed endpoint as an external provider", async () => {
     const { stateDir, modelPath } = await tempRuntimeState();
     const baseUrl = await startModelServer("custom-id", 4096);
@@ -809,6 +875,19 @@ describe("runtime resolution", () => {
     await expect(
       statusOutput({ ...options(), runtime: "lmstudio", baseUrl, model: undefined })
     ).resolves.toContain("loaded models: lmstudio/first, lmstudio/second");
+  });
+
+  it("uses the first loaded model as the Pi bootstrap model when multiple are loaded", async () => {
+    const baseUrl = await startModelListServer([{ id: "first" }, { id: "second" }]);
+
+    await expect(
+      resolveRuntime({ ...options(), runtime: "lmstudio", baseUrl, model: "auto" })
+    ).resolves.toMatchObject({
+      runtime: "lmstudio",
+      model: "first",
+      availableModels: ["first", "second"],
+      catalogModels: [{ modelId: "first" }, { modelId: "second" }]
+    });
   });
 
   it("reports no loaded models when auto discovery finds no usable models", async () => {

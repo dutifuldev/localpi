@@ -5,6 +5,15 @@ import { normalizeBaseUrl } from "../llm/openai.js";
 export type RuntimeKind = "auto" | "llama-server" | "lmstudio" | "vllm" | "openai-compatible";
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
+export const thinkingLevels: readonly ThinkingLevel[] = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh"
+];
+
 export type LocalpiOptions = {
   readonly runtime: RuntimeKind;
   readonly baseUrl: string | undefined;
@@ -235,16 +244,11 @@ function parseRuntime(value: string): RuntimeKind {
   );
 }
 
-function parseThinkingLevel(value: string): ThinkingLevel {
-  if (
-    value === "off" ||
-    value === "minimal" ||
-    value === "low" ||
-    value === "medium" ||
-    value === "high" ||
-    value === "xhigh"
-  ) {
-    return value;
+export function parseThinkingLevel(value: string): ThinkingLevel {
+  for (const level of thinkingLevels) {
+    if (value === level) {
+      return level;
+    }
   }
   throw new Error(
     `unknown thinking level ${value}; expected off, minimal, low, medium, high, or xhigh`

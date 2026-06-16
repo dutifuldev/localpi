@@ -25,8 +25,9 @@ Localpi:
 - loads configured OpenAI-compatible providers from `--providers-file`, `LOCALPI_PROVIDERS_FILE`, or `LOCALPI_MODELS_FILE`
 - includes the localpi-owned `llama-server` catalog as startable fallback entries
 - selects the only loaded model automatically
-- shows an interactive model picker when multiple loaded models are available in a TTY
-- fails with concrete `--provider` and `--model` choices instead of prompting in non-interactive runs
+- opens Pi's native model selector when multiple loaded models are available in an interactive TTY
+- never prompts in non-interactive runs; automation can pin a model with concrete `--provider` and `--model` values
+- treats `--provider` without `--model` as catalog scoping, not as a concrete model choice
 - writes Pi config for all launch-time loaded catalog entries so Pi `/model` can switch among them
 
 ### `llama-server`

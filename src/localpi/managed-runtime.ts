@@ -6,7 +6,7 @@ import {
   managedLlamaServerNeedsRestart,
   stopManagedLlamaServer
 } from "./llama-server.js";
-import type { CatalogModel, ModelCatalog } from "./catalog.js";
+import { managedModelSupportsReasoning, type CatalogModel, type ModelCatalog } from "./catalog.js";
 import {
   catalogModelFromModelInfo,
   catalogRuntimeConnection,
@@ -91,6 +91,7 @@ export async function customPathCatalogModel(
     aliases: [requested],
     displayName: `llama-server / ${resolved.name}`,
     maxTokens: options.maxTokens,
+    reasoning: managedModelSupportsReasoning(resolved.id),
     capabilities: ["text"],
     availability: "startable",
     ...optionalContextWindow(options.contextWindow ?? resolved.contextWindow)
