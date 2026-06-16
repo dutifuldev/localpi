@@ -360,6 +360,22 @@ describe("runtime resolution", () => {
     ).rejects.toThrow("--runtime openai-compatible requires --base-url");
   });
 
+  it("prefers DeepSeek thinking format for DeepSeek distill Qwen model ids", async () => {
+    const baseUrl = await startModelServer("DeepSeek-R1-Distill-Qwen-32B");
+
+    await expect(
+      resolveRuntime({ ...options(), runtime: "lmstudio", baseUrl, model: "auto" })
+    ).resolves.toMatchObject({
+      catalogModels: [
+        {
+          modelId: "DeepSeek-R1-Distill-Qwen-32B",
+          reasoning: true,
+          thinkingFormat: "deepseek"
+        }
+      ]
+    });
+  });
+
   it("uses --provider as the direct OpenAI-compatible provider id", async () => {
     const baseUrl = await startModelServer("served-model");
 

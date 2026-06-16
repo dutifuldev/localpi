@@ -223,11 +223,11 @@ function externalReasoningConfig(modelId: string): {
   readonly thinkingFormat?: CatalogThinkingFormat;
 } {
   const normalized = modelId.toLowerCase();
-  if (normalized.includes("qwen")) {
-    return { reasoning: true, thinkingFormat: "qwen-chat-template" };
-  }
   if (normalized.includes("deepseek")) {
     return { reasoning: true, thinkingFormat: "deepseek" };
+  }
+  if (normalized.includes("qwen")) {
+    return { reasoning: true, thinkingFormat: "qwen-chat-template" };
   }
   return {};
 }
