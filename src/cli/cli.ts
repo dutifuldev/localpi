@@ -21,9 +21,11 @@ export async function run(args: readonly string[]): Promise<CommandResult> {
 
     const connection = await resolveRuntime(options);
     const runtimeConfig = await writeRuntimeConfig(options, connection);
-    const extensions = await writeDefaultExtensions(options, {
-      startupModelSelector: shouldOpenStartupModelSelector(options, connection)
-    });
+    const selectorOptions = startupModelSelectorOptions(options, connection);
+    const extensions = await writeDefaultExtensions(
+      options,
+      selectorOptions === undefined ? {} : { startupModelSelector: selectorOptions }
+    );
     const plan = await createLaunchPlan(options, runtimeConfig, connection, extensions);
     const code = await execLaunchPlan(plan);
     if (code !== 0) {
@@ -50,15 +52,24 @@ async function immediateCommandResult(options: ParsedOptions): Promise<CommandRe
   return options.status ? ok(`${await statusOutput(options)}\n`) : undefined;
 }
 
-function shouldOpenStartupModelSelector(
+function startupModelSelectorOptions(
   options: ParsedOptions,
   connection: Awaited<ReturnType<typeof resolveRuntime>>
-): boolean {
+): { readonly scopedProviderId?: string } | undefined {
   if (!process.stdin.isTTY || !process.stderr.isTTY) {
-    return false;
+    return undefined;
   }
   if (options.model !== undefined && options.model !== "auto") {
-    return false;
+    return undefined;
   }
-  return connection.catalogModels.filter((model) => model.availability === "loaded").length > 1;
+  const scopedProviderId = options.provider === undefined ? undefined : connection.providerId;
+  const loadedModels = connection.catalogModels.filter(
+    (model) =>
+      model.availability === "loaded" &&
+      (scopedProviderId === undefined || model.providerId === scopedProviderId)
+  );
+  if (loadedModels.length <= 1) {
+    return undefined;
+  }
+  return scopedProviderId === undefined ? {} : { scopedProviderId };
 }

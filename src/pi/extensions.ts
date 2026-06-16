@@ -9,7 +9,11 @@ export type ExtensionBundle = {
 };
 
 export type ExtensionOptions = {
-  readonly startupModelSelector?: boolean;
+  readonly startupModelSelector?: StartupModelSelectorOptions;
+};
+
+export type StartupModelSelectorOptions = {
+  readonly scopedProviderId?: string;
 };
 
 export async function writeDefaultExtensions(
@@ -19,12 +23,12 @@ export async function writeDefaultExtensions(
   const extensionDir = path.join(options.stateDir, "pi-extensions");
   await mkdir(extensionDir, { recursive: true });
   const paths: string[] = [];
-  if (extensionOptions.startupModelSelector === true) {
+  if (extensionOptions.startupModelSelector !== undefined) {
     paths.push(
       await writeExtension(
         extensionDir,
         "startup-model-selector.ts",
-        startupModelSelectorExtensionSource()
+        startupModelSelectorExtensionSource(extensionOptions.startupModelSelector)
       )
     );
   }
@@ -49,11 +53,14 @@ async function writeExtension(extensionDir: string, name: string, source: string
   return extensionPath;
 }
 
-function startupModelSelectorExtensionSource(): string {
+function startupModelSelectorExtensionSource(options: StartupModelSelectorOptions): string {
+  const scopedProviderSource =
+    options.scopedProviderId === undefined ? "undefined" : JSON.stringify(options.scopedProviderId);
   return `import type { ExtensionAPI, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
 
 type SelectedModel = Parameters<ExtensionAPI["setModel"]>[0];
+const scopedProviderId: string | undefined = ${scopedProviderSource};
 
 export default function localpiStartupModelSelector(pi: ExtensionAPI): void {
   let opened = false;
@@ -64,9 +71,15 @@ export default function localpiStartupModelSelector(pi: ExtensionAPI): void {
     }
 
     const availableModels = ctx.modelRegistry.getAvailable();
-    if (availableModels.length <= 1) {
+    const selectableModels = scopedProviderId === undefined
+      ? availableModels
+      : availableModels.filter((model) => model.provider === scopedProviderId);
+    if (selectableModels.length <= 1) {
       return;
     }
+    const scopedModels = scopedProviderId === undefined
+      ? []
+      : selectableModels.map((model) => ({ model }));
 
     opened = true;
     const selected = await ctx.ui.custom<SelectedModel | undefined>((tui, _theme, _keybindings, done) => {
@@ -78,7 +91,7 @@ export default function localpiStartupModelSelector(pi: ExtensionAPI): void {
         ctx.model,
         settings,
         ctx.modelRegistry,
-        [],
+        scopedModels,
         (model) => done(model),
         () => done(undefined)
       );
