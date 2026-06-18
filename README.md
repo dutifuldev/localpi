@@ -112,15 +112,15 @@ localpi -p "summarize this repo"
 Run an endless non-interactive demo:
 
 ```bash
-localpi --demo
+localpi --demo --model gemma-e4b
 ```
 
-Demo mode keeps one generated Pi session across iterations so followup prompts continue from the first prompt.
+Demo mode requires an explicit model and keeps one generated Pi session across iterations so followup prompts continue from the first prompt.
 
 Override the demo prompts:
 
 ```bash
-localpi --demo --demo-initial-prompt-file ./prompts/story.txt --demo-followup-prompt "Continue."
+localpi --demo --model gemma-e4b --demo-initial-prompt-file ./prompts/story.txt --demo-followup-prompt "Continue."
 ```
 
 Pin a model alias:
@@ -195,7 +195,7 @@ localpi --stop
 - `--providers-file <path>`: provider registry JSON
 - `--tools <list>`: Pi tools allow list. Default: `read,bash,edit,write,grep,find,ls`
 - `--thinking <off|minimal|low|medium|high|xhigh>`: Pi thinking level and managed `llama-server` reasoning budget. Default: `off`
-- `--demo`: endlessly run Pi non-interactive prompts until interrupted or Pi exits non-zero
+- `--demo`: endlessly run Pi non-interactive prompts until interrupted or Pi exits non-zero; requires an explicit non-`auto` model
 - `--demo-initial-prompt <text>`: first demo prompt
 - `--demo-followup-prompt <text>`: repeated demo prompt after the first run
 - `--demo-initial-prompt-file <path>`: UTF-8 file for the first demo prompt

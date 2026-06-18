@@ -16,11 +16,12 @@ The demo loop is owned by localpi. Each individual generation is still owned by 
 
 ## Target Behavior
 
-- `localpi --demo` starts Pi once with a built-in initial prompt.
+- `localpi --demo --model <alias|id|path>` starts Pi once with a built-in initial prompt.
 - After Pi completes that prompt and exits successfully, localpi starts Pi again with the followup prompt.
 - The followup prompt defaults to `Continue.`
 - The loop continues until localpi is exited, `Ctrl-C` is pressed, or Pi exits with a non-zero status.
-- Runtime discovery, model selection, Pi config generation, extensions, thinking, tools, and approval behavior match normal localpi launches.
+- Runtime discovery, Pi config generation, extensions, thinking, tools, and approval behavior match normal localpi launches.
+- Demo mode requires an explicit non-`auto` model through `--model` or `LOCALPI_MODEL`; it must not auto-select a model.
 - Each demo run uses one generated Pi session id so followup prompts keep the first prompt's context.
 - Demo mode works with any provider localpi already supports: LM Studio, vLLM, generic OpenAI-compatible providers, and managed `llama-server`.
 - Demo mode does not parse terminal output to detect when generation stops.
@@ -68,6 +69,7 @@ Reject these combinations with clear errors:
 - `--demo --status`
 - `--demo --stop`
 - `--demo --list`
+- `--demo` without an explicit non-`auto` model
 - `--demo` with user-supplied forwarded Pi prompt flags such as `-p` or `--prompt`
 
 Forwarded non-prompt Pi options should remain allowed.
@@ -129,6 +131,7 @@ If `execLaunchPlan` currently hides too much child-process control, split out a 
 - [x] Verify CLI prompt values override environment values.
 - [x] Verify prompt files override text prompt values.
 - [x] Verify `--demo --status`, `--demo --stop`, and `--demo --list` fail clearly.
+- [x] Verify demo mode rejects missing or `auto` model selection.
 - [x] Verify demo mode rejects forwarded Pi prompt flags.
 - [x] Unit-test launch execution so demo prompts can be piped over stdin.
 - [x] Unit-test that normal launches are unchanged.
@@ -146,11 +149,11 @@ If `execLaunchPlan` currently hides too much child-process control, split out a 
 - [x] Include one simple example:
 
 ```bash
-localpi --demo
+localpi --demo --model gemma-e4b
 ```
 
 - [x] Include one override example:
 
 ```bash
-localpi --demo --demo-initial-prompt-file ./prompts/story.txt --demo-followup-prompt "Continue."
+localpi --demo --model gemma-e4b --demo-initial-prompt-file ./prompts/story.txt --demo-followup-prompt "Continue."
 ```

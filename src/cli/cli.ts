@@ -45,6 +45,10 @@ function validateDemoOptions(options: ParsedOptions): void {
     return;
   }
   validateExplicitDemoImmediateOptions(options);
+  if (!options.demoFromCli && hasImmediateCommand(options)) {
+    return;
+  }
+  validateDemoModel(options);
   const incompatibleMode = forwardedIncompatibleMode(options.forwardedArgs);
   if (incompatibleMode !== undefined) {
     throw new Error(
@@ -71,6 +75,14 @@ function validateDemoOptions(options: ParsedOptions): void {
   }
 }
 
+function validateDemoModel(options: ParsedOptions): void {
+  if (options.model === undefined || options.model === "auto") {
+    throw new Error(
+      "--demo requires an explicit --model <alias|id|path> or LOCALPI_MODEL value; demo mode will not auto-select a model"
+    );
+  }
+}
+
 function forwardedIncompatibleMode(args: readonly string[]): string | undefined {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -82,6 +94,10 @@ function forwardedIncompatibleMode(args: readonly string[]): string | undefined 
     }
   }
   return undefined;
+}
+
+function hasImmediateCommand(options: ParsedOptions): boolean {
+  return options.status || options.stop || options.list;
 }
 
 function validateExplicitDemoImmediateOptions(options: ParsedOptions): void {

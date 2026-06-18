@@ -158,25 +158,41 @@ describe("localpi cli", () => {
     expect(result.stderr).toBe("");
   });
 
+  it("requires an explicit model in demo mode", async () => {
+    const missing = await run(["--demo"]);
+    expect(missing.code).toBe(2);
+    expect(missing.stdout).toBe("");
+    expect(missing.stderr).toContain(
+      "--demo requires an explicit --model <alias|id|path> or LOCALPI_MODEL value"
+    );
+
+    const auto = await run(["--demo", "--model", "auto"]);
+    expect(auto.code).toBe(2);
+    expect(auto.stdout).toBe("");
+    expect(auto.stderr).toContain(
+      "--demo requires an explicit --model <alias|id|path> or LOCALPI_MODEL value"
+    );
+  });
+
   it("rejects forwarded Pi prompt inputs in demo mode", async () => {
-    const result = await run(["--demo", "-p", "say ok"]);
+    const result = await run(["--demo", "--model", "served-model", "-p", "say ok"]);
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain("--demo cannot be used with forwarded Pi prompt input -p");
 
-    const print = await run(["--demo", "--print", "say ok"]);
+    const print = await run(["--demo", "--model", "served-model", "--print", "say ok"]);
     expect(print.code).toBe(2);
     expect(print.stdout).toBe("");
     expect(print.stderr).toContain("--demo cannot be used with forwarded Pi prompt input --print");
 
-    const bareMessage = await run(["--demo", "say ok"]);
+    const bareMessage = await run(["--demo", "--model", "served-model", "say ok"]);
     expect(bareMessage.code).toBe(2);
     expect(bareMessage.stdout).toBe("");
     expect(bareMessage.stderr).toContain(
       "--demo cannot be used with forwarded Pi prompt input say ok"
     );
 
-    const fileArg = await run(["--demo", "@prompt.md"]);
+    const fileArg = await run(["--demo", "--model", "served-model", "@prompt.md"]);
     expect(fileArg.code).toBe(2);
     expect(fileArg.stdout).toBe("");
     expect(fileArg.stderr).toContain(
@@ -185,14 +201,14 @@ describe("localpi cli", () => {
   });
 
   it("rejects forwarded Pi rpc mode in demo mode", async () => {
-    const result = await run(["--demo", "--mode", "rpc"]);
+    const result = await run(["--demo", "--model", "served-model", "--mode", "rpc"]);
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain(
       "--demo cannot be used with forwarded Pi mode rpc; demo prompts require text stdin"
     );
 
-    const equals = await run(["--demo", "--mode=rpc"]);
+    const equals = await run(["--demo", "--model", "served-model", "--mode=rpc"]);
     expect(equals.code).toBe(2);
     expect(equals.stdout).toBe("");
     expect(equals.stderr).toContain(
@@ -201,14 +217,20 @@ describe("localpi cli", () => {
   });
 
   it("rejects forwarded Pi session flags in demo mode", async () => {
-    const result = await run(["--demo", "--session-id", "manual-session"]);
+    const result = await run([
+      "--demo",
+      "--model",
+      "served-model",
+      "--session-id",
+      "manual-session"
+    ]);
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain(
       "--demo cannot be used with forwarded Pi session flag --session-id"
     );
 
-    const equals = await run(["--demo", "--session-id=manual-session"]);
+    const equals = await run(["--demo", "--model", "served-model", "--session-id=manual-session"]);
     expect(equals.code).toBe(2);
     expect(equals.stdout).toBe("");
     expect(equals.stderr).toContain(
@@ -217,14 +239,20 @@ describe("localpi cli", () => {
   });
 
   it("rejects forwarded Pi metadata commands in demo mode", async () => {
-    const listModels = await run(["--demo", "--list-models"]);
+    const listModels = await run(["--demo", "--model", "served-model", "--list-models"]);
     expect(listModels.code).toBe(2);
     expect(listModels.stdout).toBe("");
     expect(listModels.stderr).toContain(
       "--demo cannot be used with forwarded Pi metadata flag --list-models"
     );
 
-    const exportSession = await run(["--demo", "--export", "session.html"]);
+    const exportSession = await run([
+      "--demo",
+      "--model",
+      "served-model",
+      "--export",
+      "session.html"
+    ]);
     expect(exportSession.code).toBe(2);
     expect(exportSession.stdout).toBe("");
     expect(exportSession.stderr).toContain(
@@ -319,6 +347,8 @@ describe("localpi cli", () => {
       "lmstudio",
       "--base-url",
       baseUrl,
+      "--model",
+      "served-model",
       "--state-dir",
       stateDir,
       "--session-dir",
