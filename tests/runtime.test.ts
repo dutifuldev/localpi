@@ -648,6 +648,62 @@ describe("runtime resolution", () => {
     });
   });
 
+  it("selects profile aliases for providers with discovery disabled", async () => {
+    const { stateDir } = await tempRuntimeState();
+    const providersFile = path.join(stateDir, "providers.json");
+    const profilePath = path.join(stateDir, "profile.json");
+    await writeFile(
+      providersFile,
+      JSON.stringify({
+        providers: {
+          vllm: {
+            type: "openai-compatible",
+            name: "vLLM",
+            baseUrl: "http://127.0.0.1:8000/v1",
+            discover: false
+          }
+        }
+      })
+    );
+    await writeFile(
+      profilePath,
+      JSON.stringify({
+        id: "gemma4-26b-a4b-nvfp4",
+        model: "nvidia/Gemma-4-26B-A4B-NVFP4",
+        base_url: "http://127.0.0.1:8000/v1",
+        capabilities: {
+          reasoning: true,
+          thinking_format: "qwen-chat-template"
+        }
+      })
+    );
+
+    await expect(
+      resolveRuntime({
+        ...options(),
+        runtime: "auto",
+        provider: "vllm",
+        model: "gemma4-26b-a4b-nvfp4",
+        providersFile,
+        modelProfileFile: profilePath
+      })
+    ).resolves.toMatchObject({
+      runtime: "vllm",
+      providerId: "vllm",
+      baseUrl: "http://127.0.0.1:8000/v1",
+      model: "nvidia/Gemma-4-26B-A4B-NVFP4",
+      availableModels: ["nvidia/Gemma-4-26B-A4B-NVFP4"],
+      catalogModels: [
+        {
+          modelId: "nvidia/Gemma-4-26B-A4B-NVFP4",
+          aliases: ["gemma4-26b-a4b-nvfp4"],
+          reasoning: true,
+          thinkingFormat: "qwen-chat-template"
+        }
+      ]
+    });
+  });
+
   it("starts explicit GGUF paths through the auto runtime", async () => {
     const { stateDir, modelPath } = await tempRuntimeState();
     const baseUrl = await unusedBaseUrl();

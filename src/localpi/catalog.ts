@@ -173,7 +173,27 @@ function explicitOpenAiCatalogModel(
   if (!explicitOpenAiProviderSelected(options, config.id)) {
     return undefined;
   }
-  return openAiCatalogModel(config, { id: requested }, options, profile);
+  return openAiCatalogModel(
+    config,
+    { id: explicitProfileModelId(profile, config.baseUrl ?? "", requested) },
+    options,
+    profile
+  );
+}
+
+function explicitProfileModelId(
+  profile: LocalModelProfile | undefined,
+  baseUrl: string,
+  requested: string
+): string {
+  if (
+    profile !== undefined &&
+    profileMatchesBaseUrl(profile, baseUrl) &&
+    profileMatchesModel(profile, requested)
+  ) {
+    return profile.model;
+  }
+  return requested;
 }
 
 function explicitOpenAiProviderSelected(options: LocalpiOptions, providerId: string): boolean {
