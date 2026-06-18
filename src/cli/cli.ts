@@ -58,7 +58,9 @@ function validateDemoOptions(options: ParsedOptions): void {
 }
 
 function forwardedPromptFlag(args: readonly string[]): string | undefined {
-  return args.find((arg) => arg === "-p" || arg === "--prompt" || arg.startsWith("--prompt="));
+  return args.find(
+    (arg) => arg === "-p" || arg === "--print" || arg === "--prompt" || arg.startsWith("--prompt=")
+  );
 }
 
 async function launchResolvedRuntime(

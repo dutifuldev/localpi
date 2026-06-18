@@ -136,6 +136,11 @@ describe("localpi cli", () => {
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain("--demo cannot be used with forwarded Pi prompt flag -p");
+
+    const print = await run(["--demo", "--print", "say ok"]);
+    expect(print.code).toBe(2);
+    expect(print.stdout).toBe("");
+    expect(print.stderr).toContain("--demo cannot be used with forwarded Pi prompt flag --print");
   });
 
   it("launches pi against the resolved runtime and writes its config", async () => {
