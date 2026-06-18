@@ -7,7 +7,7 @@ import {
   stopManagedLlamaServer
 } from "./llama-server.js";
 import {
-  managedModelSupportsReasoning,
+  managedCapabilityConfig,
   runtimeCatalogWarning,
   type CatalogModel,
   type CatalogWarning,
@@ -100,7 +100,7 @@ export async function customPathCatalogModel(
     aliases: [requested],
     displayName: `llama-server / ${resolved.name}`,
     maxTokens: options.maxTokens,
-    reasoning: managedModelSupportsReasoning(resolved.id),
+    ...managedCapabilityConfig(resolved.id, options),
     capabilities: ["text"],
     availability: "startable",
     ...optionalContextWindow(options.contextWindow ?? resolved.contextWindow)

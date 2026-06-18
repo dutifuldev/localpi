@@ -49,25 +49,35 @@ function validateDemoOptions(options: ParsedOptions): void {
   }
   validateDemoModel(options);
   validateDemoTty();
-  const incompatibleMode = forwardedIncompatibleMode(options.forwardedArgs);
+  validateForwardedDemoOptions(options.forwardedArgs);
+}
+
+function validateForwardedDemoOptions(args: readonly string[]): void {
+  const incompatibleMode = forwardedIncompatibleMode(args);
   if (incompatibleMode !== undefined) {
     throw new Error(
       `--demo cannot be used with forwarded Pi mode ${incompatibleMode}; demo mode runs inside Pi TUI`
     );
   }
-  const metadataFlag = forwardedMetadataFlag(options.forwardedArgs);
+  const metadataFlag = forwardedMetadataFlag(args);
   if (metadataFlag !== undefined) {
     throw new Error(
       `--demo cannot be used with forwarded Pi metadata flag ${metadataFlag}; run it without --demo`
     );
   }
-  const sessionFlag = forwardedSessionFlag(options.forwardedArgs);
+  const extensionDisableFlag = forwardedExtensionDisableFlag(args);
+  if (extensionDisableFlag !== undefined) {
+    throw new Error(
+      `--demo cannot be used with forwarded Pi extension flag ${extensionDisableFlag}; demo mode requires localpi's generated Pi extension`
+    );
+  }
+  const sessionFlag = forwardedSessionFlag(args);
   if (sessionFlag !== undefined) {
     throw new Error(
       `--demo cannot be used with forwarded Pi session flag ${sessionFlag}; demo mode manages its own session`
     );
   }
-  const promptInput = forwardedPromptInput(options.forwardedArgs);
+  const promptInput = forwardedPromptInput(args);
   if (promptInput !== undefined) {
     throw new Error(
       `--demo cannot be used with forwarded Pi prompt input ${promptInput}; use --demo-initial-prompt or --demo-followup-prompt`
@@ -197,6 +207,10 @@ function isForwardedSessionFlag(arg: string): boolean {
 
 function forwardedMetadataFlag(args: readonly string[]): string | undefined {
   return args.find((arg) => isPiMetadataFlag(arg));
+}
+
+function forwardedExtensionDisableFlag(args: readonly string[]): string | undefined {
+  return args.find((arg) => arg === "--no-extensions" || arg === "-ne");
 }
 
 function isPiMetadataFlag(arg: string): boolean {

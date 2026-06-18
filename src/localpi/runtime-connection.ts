@@ -1,6 +1,6 @@
 import {
   formatCatalogWarning,
-  managedModelSupportsReasoning,
+  managedCapabilityConfig,
   type CatalogModel,
   type ModelCatalog
 } from "./catalog.js";
@@ -66,9 +66,7 @@ export function catalogModelFromModelInfo(
     aliases: [],
     displayName: `${providerName} / ${model.id}`,
     maxTokens: options.maxTokens,
-    ...(runtime === "managed-llama-server"
-      ? { reasoning: managedModelSupportsReasoning(model.id) }
-      : {}),
+    ...(runtime === "managed-llama-server" ? managedCapabilityConfig(model.id, options) : {}),
     capabilities: ["text"],
     availability: "loaded",
     ...optionalContextWindow(contextWindow ?? model.contextWindow)

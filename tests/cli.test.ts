@@ -272,6 +272,23 @@ describe("localpi cli", () => {
     );
   });
 
+  it("rejects forwarded Pi extension disabling in demo mode", async () => {
+    setTty("stdin", true);
+    setTty("stdout", true);
+
+    const result = await run(["--demo", "--model", "served-model", "--no-extensions"]);
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(
+      "--demo cannot be used with forwarded Pi extension flag --no-extensions"
+    );
+
+    const short = await run(["--demo", "--model", "served-model", "-ne"]);
+    expect(short.code).toBe(2);
+    expect(short.stdout).toBe("");
+    expect(short.stderr).toContain("--demo cannot be used with forwarded Pi extension flag -ne");
+  });
+
   it("launches pi against the resolved runtime and writes its config", async () => {
     const stateDir = await tempStateDir();
     const baseUrl = await startModelServer("served-model", 4096);

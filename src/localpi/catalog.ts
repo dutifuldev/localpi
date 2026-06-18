@@ -233,7 +233,7 @@ async function loadedLlamaModels(
         aliases: aliases.filter((alias) => alias.id === model.id).map((alias) => alias.name),
         displayName: `${config.name} / ${model.id}`,
         maxTokens: options.maxTokens,
-        reasoning: managedModelSupportsReasoning(model.id),
+        ...managedCapabilityConfig(model.id, options),
         capabilities: ["text"],
         availability: "loaded",
         ...(contextWindow === undefined ? {} : { contextWindow })
@@ -267,7 +267,7 @@ async function startableLlamaModels(
           aliases: [alias.name],
           displayName: `${config.name} / ${alias.name}`,
           maxTokens: options.maxTokens,
-          reasoning: managedModelSupportsReasoning(resolved.id),
+          ...managedCapabilityConfig(resolved.id, options),
           capabilities: ["text"] as const,
           availability: "startable" as const,
           ...(resolved.contextWindow === undefined ? {} : { contextWindow: resolved.contextWindow })
@@ -332,6 +332,22 @@ export function managedModelSupportsReasoning(modelId: string): boolean {
     normalized.includes("gpt-oss") ||
     isGemmaThinkingModel(normalized)
   );
+}
+
+export function managedCapabilityConfig(
+  modelId: string,
+  options: LocalpiOptions
+): {
+  readonly reasoning?: boolean;
+  readonly thinkingFormat?: CatalogThinkingFormat;
+} {
+  return withoutUndefined({
+    reasoning: options.modelReasoning ?? managedModelSupportsReasoning(modelId),
+    thinkingFormat: options.modelThinkingFormat
+  }) as {
+    readonly reasoning?: boolean;
+    readonly thinkingFormat?: CatalogThinkingFormat;
+  };
 }
 
 export function runtimeCatalogWarning(
