@@ -131,16 +131,30 @@ describe("localpi cli", () => {
     expect(list.stderr).toContain("--demo cannot be used with --list");
   });
 
-  it("rejects forwarded Pi prompt flags in demo mode", async () => {
+  it("rejects forwarded Pi prompt inputs in demo mode", async () => {
     const result = await run(["--demo", "-p", "say ok"]);
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("--demo cannot be used with forwarded Pi prompt flag -p");
+    expect(result.stderr).toContain("--demo cannot be used with forwarded Pi prompt input -p");
 
     const print = await run(["--demo", "--print", "say ok"]);
     expect(print.code).toBe(2);
     expect(print.stdout).toBe("");
-    expect(print.stderr).toContain("--demo cannot be used with forwarded Pi prompt flag --print");
+    expect(print.stderr).toContain("--demo cannot be used with forwarded Pi prompt input --print");
+
+    const bareMessage = await run(["--demo", "say ok"]);
+    expect(bareMessage.code).toBe(2);
+    expect(bareMessage.stdout).toBe("");
+    expect(bareMessage.stderr).toContain(
+      "--demo cannot be used with forwarded Pi prompt input say ok"
+    );
+
+    const fileArg = await run(["--demo", "@prompt.md"]);
+    expect(fileArg.code).toBe(2);
+    expect(fileArg.stdout).toBe("");
+    expect(fileArg.stderr).toContain(
+      "--demo cannot be used with forwarded Pi prompt input @prompt.md"
+    );
   });
 
   it("rejects forwarded Pi session flags in demo mode", async () => {
@@ -149,6 +163,22 @@ describe("localpi cli", () => {
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain(
       "--demo cannot be used with forwarded Pi session flag --session-id"
+    );
+  });
+
+  it("rejects forwarded Pi metadata commands in demo mode", async () => {
+    const listModels = await run(["--demo", "--list-models"]);
+    expect(listModels.code).toBe(2);
+    expect(listModels.stdout).toBe("");
+    expect(listModels.stderr).toContain(
+      "--demo cannot be used with forwarded Pi metadata flag --list-models"
+    );
+
+    const exportSession = await run(["--demo", "--export", "session.html"]);
+    expect(exportSession.code).toBe(2);
+    expect(exportSession.stdout).toBe("");
+    expect(exportSession.stderr).toContain(
+      "--demo cannot be used with forwarded Pi metadata flag --export"
     );
   });
 

@@ -49,10 +49,10 @@ function validateDemoOptions(options: ParsedOptions): void {
   if (options.list) {
     throw new Error("--demo cannot be used with --list");
   }
-  const promptFlag = forwardedPromptFlag(options.forwardedArgs);
-  if (promptFlag !== undefined) {
+  const metadataFlag = forwardedMetadataFlag(options.forwardedArgs);
+  if (metadataFlag !== undefined) {
     throw new Error(
-      `--demo cannot be used with forwarded Pi prompt flag ${promptFlag}; use --demo-initial-prompt or --demo-followup-prompt`
+      `--demo cannot be used with forwarded Pi metadata flag ${metadataFlag}; run it without --demo`
     );
   }
   const sessionFlag = forwardedSessionFlag(options.forwardedArgs);
@@ -61,26 +61,154 @@ function validateDemoOptions(options: ParsedOptions): void {
       `--demo cannot be used with forwarded Pi session flag ${sessionFlag}; demo mode manages its own session`
     );
   }
+  const promptInput = forwardedPromptInput(options.forwardedArgs);
+  if (promptInput !== undefined) {
+    throw new Error(
+      `--demo cannot be used with forwarded Pi prompt input ${promptInput}; use --demo-initial-prompt or --demo-followup-prompt`
+    );
+  }
 }
 
-function forwardedPromptFlag(args: readonly string[]): string | undefined {
-  return args.find(
-    (arg) => arg === "-p" || arg === "--print" || arg === "--prompt" || arg.startsWith("--prompt=")
-  );
+function forwardedPromptInput(args: readonly string[]): string | undefined {
+  for (let index = 0; index < args.length; index += 1) {
+    const scan = scanForwardedPromptInput(args, index);
+    if (scan.promptInput !== undefined) {
+      return scan.promptInput;
+    }
+    index += scan.consumed - 1;
+  }
+  return undefined;
+}
+
+type ForwardedPromptScan = {
+  readonly consumed: number;
+  readonly promptInput: string | undefined;
+};
+
+function scanForwardedPromptInput(args: readonly string[], index: number): ForwardedPromptScan {
+  const arg = args[index];
+  if (arg === undefined) {
+    return noForwardedPromptInput(1);
+  }
+  if (isForwardedPromptFlag(arg) || arg.startsWith("@")) {
+    return { consumed: 1, promptInput: arg };
+  }
+  if (isPiValueToken(arg, args[index + 1])) {
+    return noForwardedPromptInput(2);
+  }
+  if (isPiIgnoredToken(arg)) {
+    return noForwardedPromptInput(1);
+  }
+  return arg.startsWith("-") ? noForwardedPromptInput(1) : { consumed: 1, promptInput: arg };
+}
+
+function noForwardedPromptInput(consumed: number): ForwardedPromptScan {
+  return { consumed, promptInput: undefined };
+}
+
+function isForwardedPromptFlag(arg: string): boolean {
+  return arg === "-p" || arg === "--print" || arg === "--prompt" || arg.startsWith("--prompt=");
 }
 
 function forwardedSessionFlag(args: readonly string[]): string | undefined {
-  return args.find(
-    (arg) =>
-      arg === "--continue" ||
-      arg === "-c" ||
-      arg === "--resume" ||
-      arg === "-r" ||
-      arg === "--session" ||
-      arg === "--session-id" ||
-      arg === "--fork" ||
-      arg === "--no-session"
+  return args.find((arg) => isForwardedSessionFlag(arg));
+}
+
+function isForwardedSessionFlag(arg: string): boolean {
+  return (
+    arg === "--continue" ||
+    arg === "-c" ||
+    arg === "--resume" ||
+    arg === "-r" ||
+    arg === "--session" ||
+    arg === "--session-id" ||
+    arg === "--fork" ||
+    arg === "--no-session"
   );
+}
+
+function forwardedMetadataFlag(args: readonly string[]): string | undefined {
+  return args.find((arg) => isPiMetadataFlag(arg));
+}
+
+function isPiMetadataFlag(arg: string): boolean {
+  return (
+    arg === "--help" ||
+    arg === "-h" ||
+    arg === "--version" ||
+    arg === "-v" ||
+    arg === "--list-models" ||
+    arg === "--export"
+  );
+}
+
+function isPiValueToken(arg: string, next: string | undefined): boolean {
+  return isPiValueFlag(arg) || isPiUnknownLongFlagValue(arg, next);
+}
+
+function isPiIgnoredToken(arg: string): boolean {
+  return isPiBooleanFlag(arg) || isPiMetadataFlag(arg) || isForwardedSessionFlag(arg);
+}
+
+function isPiValueFlag(arg: string): boolean {
+  return [
+    "--mode",
+    "--provider",
+    "--model",
+    "--api-key",
+    "--system-prompt",
+    "--append-system-prompt",
+    "--name",
+    "-n",
+    "--session",
+    "--session-id",
+    "--fork",
+    "--session-dir",
+    "--models",
+    "--tools",
+    "-t",
+    "--exclude-tools",
+    "-xt",
+    "--thinking",
+    "--export",
+    "--extension",
+    "-e",
+    "--skill",
+    "--prompt-template",
+    "--theme"
+  ].includes(arg);
+}
+
+function isPiBooleanFlag(arg: string): boolean {
+  return [
+    "--no-tools",
+    "-nt",
+    "--no-builtin-tools",
+    "-nbt",
+    "--no-extensions",
+    "-ne",
+    "--no-skills",
+    "-ns",
+    "--no-prompt-templates",
+    "-np",
+    "--no-themes",
+    "--no-context-files",
+    "-nc",
+    "--verbose",
+    "--approve",
+    "-a",
+    "--no-approve",
+    "-na",
+    "--offline"
+  ].includes(arg);
+}
+
+function isPiUnknownLongFlagValue(arg: string, next: string | undefined): boolean {
+  return arg.startsWith("--") && !arg.includes("=") && isPiUnknownLongFlagNextValue(next);
+}
+
+function isPiUnknownLongFlagNextValue(arg: string | undefined): boolean {
+  return arg !== undefined && !arg.startsWith("-") && !arg.startsWith("@");
 }
 
 async function launchResolvedRuntime(
