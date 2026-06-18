@@ -134,7 +134,7 @@ If `execLaunchPlan` currently hides too much child-process control, split out a 
 - [x] Use a fake `LOCALPI_PI_CMD` that exits `0` and records args to prove first prompt then followup prompts are sent in order.
 - [x] Use a fake `LOCALPI_PI_CMD` that exits non-zero to prove the loop stops and returns the child exit code.
 - [ ] Add an interrupt-oriented test if the process runner is made injectable enough to do that without flaking.
-- [ ] Run `npm run check`.
+- [x] Run `npm run check`.
 
 ## Documentation Checklist
 

@@ -57,7 +57,7 @@ export async function execDemoLoop(
     for (let iteration = 0; !interrupt.interrupted; iteration += 1) {
       const prompt = iteration === 0 ? prompts.initial : prompts.followup;
       const plan = await createLaunchPlan(options, runtimeConfig, connection, extensions, {
-        forwardedArgs: ["-p", prompt]
+        forwardedArgs: [...options.forwardedArgs, "-p", prompt]
       });
       const code = await execLaunchPlan(plan, {
         forwardSignals: false,

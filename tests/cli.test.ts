@@ -230,19 +230,23 @@ describe("localpi cli", () => {
       "--session-dir",
       path.join(stateDir, "sessions"),
       "--pi-command",
-      `node ${scriptPath}`
+      `node ${scriptPath}`,
+      "--no-tools"
     ]);
 
     expect(result).toEqual({ code: 7, stdout: "", stderr: "" });
     const records = (await readFile(logPath, "utf8"))
       .trim()
       .split("\n")
-      .map((line) => JSON.parse(line) as { readonly prompt: string });
+      .map(
+        (line) => JSON.parse(line) as { readonly args: readonly string[]; readonly prompt: string }
+      );
     expect(records.map((record) => record.prompt)).toEqual([
       "start story",
       "keep going",
       "keep going"
     ]);
+    expect(records.every((record) => record.args.includes("--no-tools"))).toBe(true);
   });
 
   async function startModelServer(model: string, contextWindow: number): Promise<string> {
@@ -323,7 +327,7 @@ describe("localpi cli", () => {
       `const logPath = ${JSON.stringify(logPath)};`,
       "const count = fs.existsSync(countPath) ? Number(fs.readFileSync(countPath, 'utf8')) : 0;",
       "fs.writeFileSync(countPath, String(count + 1));",
-      "fs.appendFileSync(logPath, `${JSON.stringify({ prompt })}\\n`);",
+      "fs.appendFileSync(logPath, `${JSON.stringify({ args, prompt })}\\n`);",
       "process.exit(count >= 2 ? 7 : 0);"
     ].join("\n");
   }
