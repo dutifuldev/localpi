@@ -19,7 +19,7 @@ describe("Pi extensions", () => {
       const status = await readFile(bundle.paths[2] ?? "", "utf8");
       expect(thinking).toContain('pi.registerCommand("thinking"');
       expect(thinking).toContain("pi.setThinkingLevel(level)");
-      expect(thinking).toContain(JSON.stringify(path.join(stateDir, "thinking.json")));
+      expect(thinking).toContain(JSON.stringify(path.join(stateDir, "settings.json")));
       expect(thinking).toContain("persistThinking(actual)");
       expect(thinking).toContain("persistThinking(event.level)");
       expect(thinking).toContain("thinking_level_select");

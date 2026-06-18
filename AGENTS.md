@@ -15,6 +15,7 @@ Rules:
 - Add or update tests for behavior changes.
 - Keep classifier-specific and final-schema workflows out of this repo. Those belong in callers such as localpager-agent.
 - Do not commit generated output, local model responses, secrets, session files, or downloaded model files.
+- Store persistent localpi user settings in `<state-dir>/settings.json`. Do not create a new top-level state file for each setting; add a field to the settings object instead. Separate files are only for distinct generated artifacts, runtime metadata, caches, logs, or external config formats.
 - Follow the Slophammer agent entrypoint in `dutifuldev/slophammer/docs/AGENT_ENTRYPOINT.md` when changing repo structure or quality gates.
 
 ## Pi TUI Integration

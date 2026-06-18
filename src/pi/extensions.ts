@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { LocalpiOptions } from "../localpi/options.js";
-import { thinkingStatePath } from "../localpi/thinking-state.js";
+import { settingsStatePath } from "../localpi/settings-state.js";
 import { resolveDemoPrompts, type DemoPrompts } from "./demo.js";
 
 export type ExtensionBundle = {
@@ -52,7 +52,7 @@ export async function writeDefaultExtensions(
     await writeExtension(
       extensionDir,
       "thinking-control.ts",
-      thinkingControlExtensionSource(thinkingStatePath(options))
+      thinkingControlExtensionSource(settingsStatePath(options))
     )
   );
   if (options.approval) {
@@ -396,16 +396,16 @@ function textUpdateFromUnknown(value: unknown): TextUpdate {
 `;
 }
 
-function thinkingControlExtensionSource(statePath: string): string {
-  const statePathSource = JSON.stringify(statePath);
-  return `import { mkdir, writeFile } from "node:fs/promises";
+function thinkingControlExtensionSource(settingsPath: string): string {
+  const settingsPathSource = JSON.stringify(settingsPath);
+  return `import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 const levels: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
-const statePath = ${statePathSource};
+const settingsPath = ${settingsPathSource};
 
 export default function localpiThinkingControl(pi: ExtensionAPI): void {
   pi.registerCommand("thinking", {
@@ -443,8 +443,19 @@ export default function localpiThinkingControl(pi: ExtensionAPI): void {
 }
 
 async function persistThinking(level: ThinkingLevel): Promise<void> {
-  await mkdir(dirname(statePath), { recursive: true });
-  await writeFile(statePath, \`\${JSON.stringify({ thinking: level }, null, 2)}\\n\`, "utf8");
+  const settings = await readSettings();
+  settings.thinking = level;
+  await mkdir(dirname(settingsPath), { recursive: true });
+  await writeFile(settingsPath, \`\${JSON.stringify(settings, null, 2)}\\n\`, "utf8");
+}
+
+async function readSettings(): Promise<Record<string, unknown>> {
+  try {
+    const value = JSON.parse(await readFile(settingsPath, "utf8"));
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
 }
 
 async function promptThinkingLevel(

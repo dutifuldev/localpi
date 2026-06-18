@@ -324,7 +324,7 @@ describe("localpi cli", () => {
     const baseUrl = await startModelServer("served-model", 4096);
     const scriptPath = path.join(stateDir, "fake-pi.cjs");
     const firstLogPath = path.join(stateDir, "remembered-launch.json");
-    await writeFile(path.join(stateDir, "thinking.json"), JSON.stringify({ thinking: "high" }));
+    await writeFile(path.join(stateDir, "settings.json"), JSON.stringify({ thinking: "high" }));
     await writeFile(scriptPath, fakePiLaunchScript(firstLogPath));
 
     const remembered = await run([

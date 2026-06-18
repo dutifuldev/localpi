@@ -7,7 +7,7 @@ import {
   statusOutput,
   stopRuntime
 } from "../localpi/runtime.js";
-import { applyRememberedThinking } from "../localpi/thinking-state.js";
+import { applyRememberedSettings } from "../localpi/settings-state.js";
 import { writeRuntimeConfig } from "../pi/config.js";
 import { writeDefaultExtensions } from "../pi/extensions.js";
 import { createLaunchPlan, execLaunchPlan } from "../pi/launch.js";
@@ -24,7 +24,9 @@ export async function run(args: readonly string[]): Promise<CommandResult> {
     if (commandResult !== undefined) {
       return commandResult;
     }
-    options = await applyRememberedThinking(options, hasExplicitThinkingOverride(args));
+    options = await applyRememberedSettings(options, {
+      thinking: hasExplicitThinkingOverride(args)
+    });
 
     const connection = await resolveRuntime(options);
     const runtimeConfig = await writeRuntimeConfig(options, connection);
