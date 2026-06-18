@@ -65,6 +65,9 @@ describe("Pi extensions", () => {
       expect(demo).toContain('event.reason !== "startup"');
       expect(demo).toContain('ctx.mode !== "tui"');
       expect(demo).toContain('pi.on("turn_end"');
+      expect(demo).toContain('event.message.stopReason === "aborted"');
+      expect(demo).toContain('event.message.stopReason === "error"');
+      expect(demo).toContain("stopped = true");
       expect(demo).toContain("pi.sendUserMessage(initialPrompt)");
       expect(demo).toContain('pi.sendUserMessage(followupPrompt, { deliverAs: "followUp" })');
       expect(demo).toContain('const initialPrompt = "- start story";');

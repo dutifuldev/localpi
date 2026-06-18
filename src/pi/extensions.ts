@@ -92,8 +92,12 @@ export default function localpiDemoMode(pi: ExtensionAPI): void {
     });
   });
 
-  pi.on("turn_end", (_event, ctx) => {
+  pi.on("turn_end", (event, ctx) => {
     if (!started || stopped || ctx.mode !== "tui") {
+      return;
+    }
+    if (event.message.role === "assistant" && (event.message.stopReason === "aborted" || event.message.stopReason === "error")) {
+      stopped = true;
       return;
     }
     queueMicrotask(() => {

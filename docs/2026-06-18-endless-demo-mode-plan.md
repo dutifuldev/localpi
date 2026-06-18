@@ -126,6 +126,7 @@ Prompt file loading should stay in localpi before extension generation. The gene
 ## Signal And Exit Behavior
 
 - Pi owns `Ctrl-C`, exit, and interactive lifecycle behavior.
+- If a turn ends with an aborted or error assistant message, the demo extension should stop queueing followup prompts.
 - localpi should not restart Pi after exit.
 - If Pi exits non-zero, localpi should return the same exit code as a normal launch.
 - No special signal-forwarding loop should be needed beyond normal `execLaunchPlan` behavior.
