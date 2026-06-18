@@ -50,6 +50,20 @@ describe("Pi launch plan", () => {
     expect(plan.args).toContain("bash");
   });
 
+  it("allows callers to override forwarded Pi args without mutating options", async () => {
+    const baseOptions = options("/tmp/localpi-state");
+    const plan = await createLaunchPlan(
+      baseOptions,
+      runtimeConfig("/tmp/localpi-state"),
+      connection("gemma-4-e4b-it"),
+      { paths: [], systemPrompt: "localpi prompt" },
+      { forwardedArgs: ["-p", "demo prompt"] }
+    );
+
+    expect(baseOptions.forwardedArgs).toEqual(["-p", "say ok"]);
+    expect(plan.args.slice(-2)).toEqual(["-p", "demo prompt"]);
+  });
+
   it("runs the plan through a shell and reports the exit code", async () => {
     await expect(
       execLaunchPlan({ command: "sh -c 'exit 0' --", args: ["quoted 'arg'"], env: {} })
@@ -84,6 +98,11 @@ function options(stateDir: string): LocalpiOptions {
     tools: "read,bash,edit,write,grep,find,ls",
     approval: true,
     tokenStatus: true,
+    demo: false,
+    demoInitialPrompt: undefined,
+    demoInitialPromptFile: undefined,
+    demoFollowupPrompt: undefined,
+    demoFollowupPromptFile: undefined,
     status: false,
     stop: false,
     list: false,

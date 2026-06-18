@@ -65,6 +65,7 @@ describe("localpi option parsing", () => {
     expect(parseLocalpiArgs(["--status"]).status).toBe(true);
     expect(parseLocalpiArgs(["--stop"]).stop).toBe(true);
     expect(parseLocalpiArgs(["--list"]).list).toBe(true);
+    expect(parseLocalpiArgs(["--demo"]).demo).toBe(true);
   });
 
   it("parses every value flag", () => {
@@ -100,7 +101,15 @@ describe("localpi option parsing", () => {
       "--chat-template",
       "/tmp/template.jinja",
       "--tools",
-      "read,bash"
+      "read,bash",
+      "--demo-initial-prompt",
+      "story",
+      "--demo-followup-prompt",
+      "again",
+      "--demo-initial-prompt-file",
+      "/tmp/initial.txt",
+      "--demo-followup-prompt-file",
+      "/tmp/followup.txt"
     ]);
     expect(options).toMatchObject({
       model: "custom",
@@ -118,7 +127,11 @@ describe("localpi option parsing", () => {
       gpuLayers: 0,
       parallel: 2,
       chatTemplate: "/tmp/template.jinja",
-      tools: "read,bash"
+      tools: "read,bash",
+      demoInitialPrompt: "story",
+      demoFollowupPrompt: "again",
+      demoInitialPromptFile: "/tmp/initial.txt",
+      demoFollowupPromptFile: "/tmp/followup.txt"
     });
     expect(parseLocalpiArgs(["--llama-server", "/opt/bin/other"]).serverCommand).toBe(
       "/opt/bin/other"
@@ -139,6 +152,7 @@ describe("localpi option parsing", () => {
     expect(text).toContain("localpi [localpi options] [pi options/messages]");
     expect(text).toContain("--runtime <kind>");
     expect(text).toContain("--thinking <level>");
+    expect(text).toContain("--demo");
   });
 });
 
@@ -152,7 +166,12 @@ describe("localpi environment defaults", () => {
     "LOCALPI_PROVIDER",
     "LOCALPI_PROVIDERS_FILE",
     "LOCALPI_SESSION_DIR",
-    "LOCALPI_THINKING"
+    "LOCALPI_THINKING",
+    "LOCALPI_DEMO",
+    "LOCALPI_DEMO_INITIAL_PROMPT",
+    "LOCALPI_DEMO_FOLLOWUP_PROMPT",
+    "LOCALPI_DEMO_INITIAL_PROMPT_FILE",
+    "LOCALPI_DEMO_FOLLOWUP_PROMPT_FILE"
   ] as const;
   const previous = new Map(names.map((name) => [name, process.env[name]]));
 
@@ -177,6 +196,11 @@ describe("localpi environment defaults", () => {
     process.env["LOCALPI_PROVIDERS_FILE"] = "/tmp/env-providers.json";
     process.env["LOCALPI_SESSION_DIR"] = "/tmp/localpi-env-sessions";
     process.env["LOCALPI_THINKING"] = "medium";
+    process.env["LOCALPI_DEMO"] = "true";
+    process.env["LOCALPI_DEMO_INITIAL_PROMPT"] = "env story";
+    process.env["LOCALPI_DEMO_FOLLOWUP_PROMPT"] = "env again";
+    process.env["LOCALPI_DEMO_INITIAL_PROMPT_FILE"] = "/tmp/env-initial.txt";
+    process.env["LOCALPI_DEMO_FOLLOWUP_PROMPT_FILE"] = "/tmp/env-followup.txt";
 
     expect(parseLocalpiArgs([])).toMatchObject({
       baseUrl: "http://127.0.0.1:9999/v1",
@@ -187,7 +211,12 @@ describe("localpi environment defaults", () => {
       provider: "env-provider",
       providersFile: "/tmp/env-providers.json",
       sessionDir: "/tmp/localpi-env-sessions",
-      thinking: "medium"
+      thinking: "medium",
+      demo: true,
+      demoInitialPrompt: "env story",
+      demoFollowupPrompt: "env again",
+      demoInitialPromptFile: "/tmp/env-initial.txt",
+      demoFollowupPromptFile: "/tmp/env-followup.txt"
     });
   });
 
@@ -201,5 +230,21 @@ describe("localpi environment defaults", () => {
   it("rejects non boolean-like environment toggles", () => {
     process.env["LOCALPI_APPROVAL"] = "maybe";
     expect(() => parseLocalpiArgs([])).toThrow("LOCALPI_APPROVAL must be boolean-like, got maybe");
+  });
+
+  it("lets explicit demo flags override environment prompt values", () => {
+    process.env["LOCALPI_DEMO_INITIAL_PROMPT"] = "env story";
+    process.env["LOCALPI_DEMO_FOLLOWUP_PROMPT"] = "env again";
+    expect(
+      parseLocalpiArgs([
+        "--demo-initial-prompt",
+        "cli story",
+        "--demo-followup-prompt",
+        "cli again"
+      ])
+    ).toMatchObject({
+      demoInitialPrompt: "cli story",
+      demoFollowupPrompt: "cli again"
+    });
   });
 });

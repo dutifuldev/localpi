@@ -8,12 +8,14 @@ import {
   stopRuntime
 } from "../localpi/runtime.js";
 import { writeRuntimeConfig } from "../pi/config.js";
+import { execDemoLoop } from "../pi/demo.js";
 import { writeDefaultExtensions } from "../pi/extensions.js";
 import { createLaunchPlan, execLaunchPlan } from "../pi/launch.js";
 
 export async function run(args: readonly string[]): Promise<CommandResult> {
   try {
     const options = parseLocalpiArgs(args);
+    validateDemoOptions(options);
     const commandResult = await immediateCommandResult(options);
     if (commandResult !== undefined) {
       return commandResult;
@@ -26,18 +28,53 @@ export async function run(args: readonly string[]): Promise<CommandResult> {
       options,
       selectorOptions === undefined ? {} : { startupModelSelector: selectorOptions }
     );
-    const plan = await createLaunchPlan(options, runtimeConfig, connection, extensions);
-    const code = await execLaunchPlan(plan);
-    if (code !== 0) {
-      return { code, stdout: "", stderr: "" };
-    }
-    return ok(connection.warnings.length === 0 ? "" : connectionStatus(connection));
+    return await launchResolvedRuntime(options, runtimeConfig, connection, extensions);
   } catch (error) {
     return fail(`localpi: ${errorMessage(error)}`);
   }
 }
 
 type ParsedOptions = ReturnType<typeof parseLocalpiArgs>;
+
+function validateDemoOptions(options: ParsedOptions): void {
+  if (!options.demo) {
+    return;
+  }
+  if (options.status) {
+    throw new Error("--demo cannot be used with --status");
+  }
+  if (options.stop) {
+    throw new Error("--demo cannot be used with --stop");
+  }
+  if (options.list) {
+    throw new Error("--demo cannot be used with --list");
+  }
+  const promptFlag = forwardedPromptFlag(options.forwardedArgs);
+  if (promptFlag !== undefined) {
+    throw new Error(
+      `--demo cannot be used with forwarded Pi prompt flag ${promptFlag}; use --demo-initial-prompt or --demo-followup-prompt`
+    );
+  }
+}
+
+function forwardedPromptFlag(args: readonly string[]): string | undefined {
+  return args.find((arg) => arg === "-p" || arg === "--prompt" || arg.startsWith("--prompt="));
+}
+
+async function launchResolvedRuntime(
+  options: ParsedOptions,
+  runtimeConfig: Awaited<ReturnType<typeof writeRuntimeConfig>>,
+  connection: Awaited<ReturnType<typeof resolveRuntime>>,
+  extensions: Awaited<ReturnType<typeof writeDefaultExtensions>>
+): Promise<CommandResult> {
+  const code = options.demo
+    ? await execDemoLoop(options, runtimeConfig, connection, extensions)
+    : await execLaunchPlan(await createLaunchPlan(options, runtimeConfig, connection, extensions));
+  if (code !== 0) {
+    return { code, stdout: "", stderr: "" };
+  }
+  return ok(connection.warnings.length === 0 ? "" : connectionStatus(connection));
+}
 
 async function immediateCommandResult(options: ParsedOptions): Promise<CommandResult | undefined> {
   if (options.forwardedArgs.length === 1 && options.forwardedArgs[0] === "--help") {

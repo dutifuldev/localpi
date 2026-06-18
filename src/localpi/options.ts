@@ -37,6 +37,11 @@ export type LocalpiOptions = {
   readonly tools: string | undefined;
   readonly approval: boolean;
   readonly tokenStatus: boolean;
+  readonly demo: boolean;
+  readonly demoInitialPrompt: string | undefined;
+  readonly demoInitialPromptFile: string | undefined;
+  readonly demoFollowupPrompt: string | undefined;
+  readonly demoFollowupPromptFile: string | undefined;
   readonly status: boolean;
   readonly stop: boolean;
   readonly list: boolean;
@@ -69,6 +74,11 @@ export function defaultOptions(): LocalpiOptions {
     tools: envString("LOCALPI_TOOLS", "read,bash,edit,write,grep,find,ls"),
     approval: envBoolean("LOCALPI_APPROVAL", true),
     tokenStatus: envBoolean("LOCALPI_TOKEN_STATUS", true),
+    demo: envBoolean("LOCALPI_DEMO", false),
+    demoInitialPrompt: process.env["LOCALPI_DEMO_INITIAL_PROMPT"],
+    demoInitialPromptFile: process.env["LOCALPI_DEMO_INITIAL_PROMPT_FILE"],
+    demoFollowupPrompt: process.env["LOCALPI_DEMO_FOLLOWUP_PROMPT"],
+    demoFollowupPromptFile: process.env["LOCALPI_DEMO_FOLLOWUP_PROMPT_FILE"],
     status: false,
     stop: false,
     list: false,
@@ -128,6 +138,15 @@ export function usage(): string {
     "  --providers-file <path>  localpi provider registry JSON",
     "  --no-approval           do not ask before tool calls",
     "  --no-token-status       do not install token status extension",
+    "  --demo                  endlessly run Pi prompts for demo mode",
+    "  --demo-initial-prompt <text>",
+    "                          first demo prompt",
+    "  --demo-followup-prompt <text>",
+    "                          repeated demo prompt after the first run",
+    "  --demo-initial-prompt-file <path>",
+    "                          UTF-8 file for the first demo prompt",
+    "  --demo-followup-prompt-file <path>",
+    "                          UTF-8 file for repeated demo prompts",
     "  --status                print runtime status and exit",
     "  --stop                  stop the localpi-owned llama-server",
     "  --list                  list model aliases",
@@ -183,7 +202,8 @@ const booleanFlagUpdaters: Readonly<Record<string, BooleanUpdater>> = {
   "--stop": (options) => ({ ...options, stop: true }),
   "--list": (options) => ({ ...options, list: true }),
   "--no-approval": (options) => ({ ...options, approval: false }),
-  "--no-token-status": (options) => ({ ...options, tokenStatus: false })
+  "--no-token-status": (options) => ({ ...options, tokenStatus: false }),
+  "--demo": (options) => ({ ...options, demo: true })
 };
 
 type OptionUpdater = (options: LocalpiOptions, value: string) => LocalpiOptions;
@@ -213,7 +233,17 @@ const valueFlagUpdaters: Readonly<Record<string, OptionUpdater>> = {
   "--gpu-layers": (options, value) => ({ ...options, gpuLayers: parseNonNegativeInteger(value) }),
   "--parallel": (options, value) => ({ ...options, parallel: parsePositiveInteger(value) }),
   "--chat-template": (options, value) => ({ ...options, chatTemplate: value }),
-  "--tools": (options, value) => ({ ...options, tools: value })
+  "--tools": (options, value) => ({ ...options, tools: value }),
+  "--demo-initial-prompt": (options, value) => ({ ...options, demoInitialPrompt: value }),
+  "--demo-followup-prompt": (options, value) => ({ ...options, demoFollowupPrompt: value }),
+  "--demo-initial-prompt-file": (options, value) => ({
+    ...options,
+    demoInitialPromptFile: value
+  }),
+  "--demo-followup-prompt-file": (options, value) => ({
+    ...options,
+    demoFollowupPromptFile: value
+  })
 };
 
 function parseValueFlag(

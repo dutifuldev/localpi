@@ -109,6 +109,18 @@ Run a non-interactive Pi prompt:
 localpi -p "summarize this repo"
 ```
 
+Run an endless non-interactive demo:
+
+```bash
+localpi --demo
+```
+
+Override the demo prompts:
+
+```bash
+localpi --demo --demo-initial-prompt-file ./prompts/story.txt --demo-followup-prompt "Continue."
+```
+
 Pin a model alias:
 
 ```bash
@@ -181,6 +193,11 @@ localpi --stop
 - `--providers-file <path>`: provider registry JSON
 - `--tools <list>`: Pi tools allow list. Default: `read,bash,edit,write,grep,find,ls`
 - `--thinking <off|minimal|low|medium|high|xhigh>`: Pi thinking level and managed `llama-server` reasoning budget. Default: `off`
+- `--demo`: endlessly run Pi non-interactive prompts until interrupted or Pi exits non-zero
+- `--demo-initial-prompt <text>`: first demo prompt
+- `--demo-followup-prompt <text>`: repeated demo prompt after the first run
+- `--demo-initial-prompt-file <path>`: UTF-8 file for the first demo prompt
+- `--demo-followup-prompt-file <path>`: UTF-8 file for repeated demo prompts
 - `--no-approval`: disable the tool approval gate
 - `--no-token-status`: disable the token status extension
 - `--status`: print runtime, model, and Pi config status
@@ -207,6 +224,11 @@ localpi --stop
 - `LOCALPI_CHAT_TEMPLATE`
 - `LOCALPI_TOOLS`
 - `LOCALPI_THINKING`
+- `LOCALPI_DEMO`
+- `LOCALPI_DEMO_INITIAL_PROMPT`
+- `LOCALPI_DEMO_FOLLOWUP_PROMPT`
+- `LOCALPI_DEMO_INITIAL_PROMPT_FILE`
+- `LOCALPI_DEMO_FOLLOWUP_PROMPT_FILE`
 - `LOCALPI_MODELS_FILE`
 
 `LOCALPI_MODELS_FILE` may point at a JSON file with this shape:

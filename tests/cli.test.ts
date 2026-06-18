@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -114,6 +114,30 @@ describe("localpi cli", () => {
     expect(result.stderr).toContain("localpi: unknown runtime bogus");
   });
 
+  it("rejects demo mode with immediate localpi commands", async () => {
+    const status = await run(["--demo", "--status"]);
+    expect(status.code).toBe(2);
+    expect(status.stdout).toBe("");
+    expect(status.stderr).toContain("--demo cannot be used with --status");
+
+    const stop = await run(["--demo", "--stop"]);
+    expect(stop.code).toBe(2);
+    expect(stop.stdout).toBe("");
+    expect(stop.stderr).toContain("--demo cannot be used with --stop");
+
+    const list = await run(["--demo", "--list"]);
+    expect(list.code).toBe(2);
+    expect(list.stdout).toBe("");
+    expect(list.stderr).toContain("--demo cannot be used with --list");
+  });
+
+  it("rejects forwarded Pi prompt flags in demo mode", async () => {
+    const result = await run(["--demo", "-p", "say ok"]);
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("--demo cannot be used with forwarded Pi prompt flag -p");
+  });
+
   it("launches pi against the resolved runtime and writes its config", async () => {
     const stateDir = await tempStateDir();
     const baseUrl = await startModelServer("served-model", 4096);
@@ -183,6 +207,44 @@ describe("localpi cli", () => {
     expect(result).toEqual({ code: 7, stdout: "", stderr: "" });
   });
 
+  it("runs demo prompts until the child exits non-zero", async () => {
+    const stateDir = await tempStateDir();
+    const baseUrl = await startModelServer("served-model", 4096);
+    const scriptPath = path.join(stateDir, "fake-pi.cjs");
+    const countPath = path.join(stateDir, "demo-count.txt");
+    const logPath = path.join(stateDir, "demo-prompts.jsonl");
+    await writeFile(scriptPath, fakeDemoPiScript(countPath, logPath));
+
+    const result = await run([
+      "--demo",
+      "--demo-initial-prompt",
+      "start story",
+      "--demo-followup-prompt",
+      "keep going",
+      "--runtime",
+      "lmstudio",
+      "--base-url",
+      baseUrl,
+      "--state-dir",
+      stateDir,
+      "--session-dir",
+      path.join(stateDir, "sessions"),
+      "--pi-command",
+      `node ${scriptPath}`
+    ]);
+
+    expect(result).toEqual({ code: 7, stdout: "", stderr: "" });
+    const records = (await readFile(logPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { readonly prompt: string });
+    expect(records.map((record) => record.prompt)).toEqual([
+      "start story",
+      "keep going",
+      "keep going"
+    ]);
+  });
+
   async function startModelServer(model: string, contextWindow: number): Promise<string> {
     const server = createServer((request, response) => {
       if (request.url === "/v1/models") {
@@ -249,5 +311,20 @@ describe("localpi cli", () => {
       configurable: true,
       value
     });
+  }
+
+  function fakeDemoPiScript(countPath: string, logPath: string): string {
+    return [
+      "const fs = require('node:fs');",
+      "const args = process.argv.slice(2);",
+      "const promptIndex = args.indexOf('-p');",
+      "const prompt = promptIndex < 0 ? undefined : args[promptIndex + 1];",
+      `const countPath = ${JSON.stringify(countPath)};`,
+      `const logPath = ${JSON.stringify(logPath)};`,
+      "const count = fs.existsSync(countPath) ? Number(fs.readFileSync(countPath, 'utf8')) : 0;",
+      "fs.writeFileSync(countPath, String(count + 1));",
+      "fs.appendFileSync(logPath, `${JSON.stringify({ prompt })}\\n`);",
+      "process.exit(count >= 2 ? 7 : 0);"
+    ].join("\n");
   }
 });

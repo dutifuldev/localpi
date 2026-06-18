@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import type { StdioOptions } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 
@@ -13,13 +14,24 @@ export type LaunchPlan = {
   readonly env: Readonly<Record<string, string>>;
 };
 
+export type LaunchPlanOptions = {
+  readonly forwardedArgs?: readonly string[];
+};
+
+export type LaunchExecutionOptions = {
+  readonly forwardSignals?: boolean;
+  readonly onChild?: (child: ChildProcess) => void;
+};
+
 export async function createLaunchPlan(
   options: LocalpiOptions,
   runtimeConfig: RuntimeConfig,
   connection: RuntimeConnection,
-  extensions: ExtensionBundle
+  extensions: ExtensionBundle,
+  launchOptions: LaunchPlanOptions = {}
 ): Promise<LaunchPlan> {
   await mkdir(options.sessionDir, { recursive: true });
+  const forwardedArgs = launchOptions.forwardedArgs ?? options.forwardedArgs;
   return {
     command: options.piCommand,
     args: [
@@ -32,7 +44,7 @@ export async function createLaunchPlan(
       ...extensionArgs(extensions),
       "--append-system-prompt",
       extensions.systemPrompt,
-      ...withDefaultTools(options.forwardedArgs, options.tools)
+      ...withDefaultTools(forwardedArgs, options.tools)
     ],
     env: {
       PI_CODING_AGENT_DIR: runtimeConfig.configDir,
@@ -44,19 +56,27 @@ export async function createLaunchPlan(
   };
 }
 
-export async function execLaunchPlan(plan: LaunchPlan): Promise<number> {
+export async function execLaunchPlan(
+  plan: LaunchPlan,
+  options: LaunchExecutionOptions = {}
+): Promise<number> {
   const stdio: StdioOptions = "inherit";
   const child = spawn(shellCommand(plan.command, plan.args), {
     shell: true,
     stdio,
     env: { ...process.env, ...plan.env }
   });
+  options.onChild?.(child);
   child.stdout?.resume();
   return await new Promise<number>((resolve, reject) => {
     child.on("error", reject);
     child.on("exit", (code, signal) => {
       if (signal !== null) {
-        process.kill(process.pid, signal);
+        if (options.forwardSignals !== false) {
+          process.kill(process.pid, signal);
+          return;
+        }
+        resolve(signalExitCode(signal));
         return;
       }
       resolve(code ?? 0);
@@ -87,4 +107,15 @@ function hasToolFlag(args: readonly string[]): boolean {
   return args.some(
     (arg) => arg === "--tools" || arg === "-t" || arg === "--no-tools" || arg === "-nt"
   );
+}
+
+function signalExitCode(signal: NodeJS.Signals): number {
+  switch (signal) {
+    case "SIGINT":
+      return 130;
+    case "SIGTERM":
+      return 143;
+    default:
+      return 1;
+  }
 }
