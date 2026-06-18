@@ -19,6 +19,9 @@ describe("Pi extensions", () => {
       const status = await readFile(bundle.paths[2] ?? "", "utf8");
       expect(thinking).toContain('pi.registerCommand("thinking"');
       expect(thinking).toContain("pi.setThinkingLevel(level)");
+      expect(thinking).toContain(JSON.stringify(path.join(stateDir, "settings.json")));
+      expect(thinking).toContain("persistThinking(actual)");
+      expect(thinking).toContain("persistThinking(event.level)");
       expect(thinking).toContain("thinking_level_select");
       expect(approval).toContain("ctx.ui.confirm");
       expect(status).toContain("tok/s");
@@ -44,6 +47,39 @@ describe("Pi extensions", () => {
       const thinking = await readFile(bundle.paths[0] ?? "", "utf8");
       expect(thinking).toContain('pi.registerCommand("thinking"');
       expect(bundle.systemPrompt).toContain("Tool approval is disabled for this session.");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a TUI demo extension when demo mode is enabled", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-ext-"));
+    try {
+      const bundle = await writeDefaultExtensions({
+        ...options(stateDir),
+        demo: true,
+        demoInitialPrompt: "- start story",
+        demoFollowupPrompt: "@keep going"
+      });
+      expect(bundle.paths).toHaveLength(4);
+      expect(path.basename(bundle.paths[0] ?? "")).toBe("demo-mode.ts");
+      const demo = await readFile(bundle.paths[0] ?? "", "utf8");
+      expect(demo).toContain('pi.on("session_start"');
+      expect(demo).toContain('event.reason !== "startup"');
+      expect(demo).toContain('ctx.mode !== "tui"');
+      expect(demo).toContain('pi.on("turn_end"');
+      expect(demo).toContain('event.message.role !== "assistant"');
+      expect(demo).toContain("switch (event.message.stopReason)");
+      expect(demo).toContain('case "aborted"');
+      expect(demo).toContain('case "error"');
+      expect(demo).toContain('case "toolUse"');
+      expect(demo).toContain("stopped = true");
+      expect(demo).toContain("pi.sendUserMessage(initialPrompt)");
+      expect(demo).toContain('pi.sendUserMessage(followupPrompt, { deliverAs: "followUp" })');
+      expect(demo).toContain('const initialPrompt = "- start story";');
+      expect(demo).toContain('const followupPrompt = "@keep going";');
+      expect(demo).not.toContain("-p");
+      expect(demo).not.toContain("--prompt");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
@@ -105,6 +141,9 @@ function options(stateDir: string): LocalpiOptions {
     provider: undefined,
     customProviderId: "local-openai",
     providersFile: undefined,
+    modelProfileFile: undefined,
+    modelReasoning: undefined,
+    modelThinkingFormat: undefined,
     stateDir,
     sessionDir: path.join(stateDir, "sessions"),
     piCommand: "pi",
@@ -121,6 +160,12 @@ function options(stateDir: string): LocalpiOptions {
     tools: "read,bash,edit,write,grep,find,ls",
     approval: true,
     tokenStatus: true,
+    demo: false,
+    demoFromCli: false,
+    demoInitialPrompt: undefined,
+    demoInitialPromptFile: undefined,
+    demoFollowupPrompt: undefined,
+    demoFollowupPromptFile: undefined,
     status: false,
     stop: false,
     list: false,

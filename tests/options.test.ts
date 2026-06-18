@@ -65,6 +65,8 @@ describe("localpi option parsing", () => {
     expect(parseLocalpiArgs(["--status"]).status).toBe(true);
     expect(parseLocalpiArgs(["--stop"]).stop).toBe(true);
     expect(parseLocalpiArgs(["--list"]).list).toBe(true);
+    expect(parseLocalpiArgs(["--demo"]).demo).toBe(true);
+    expect(parseLocalpiArgs(["--demo"]).demoFromCli).toBe(true);
   });
 
   it("parses every value flag", () => {
@@ -77,6 +79,12 @@ describe("localpi option parsing", () => {
       "my-provider",
       "--providers-file",
       "/tmp/localpi-providers.json",
+      "--model-profile",
+      "/tmp/local-model-profile.json",
+      "--model-reasoning",
+      "true",
+      "--model-thinking-format",
+      "qwen-chat-template",
       "--state-dir",
       "/tmp/localpi-state",
       "--session-dir",
@@ -100,13 +108,24 @@ describe("localpi option parsing", () => {
       "--chat-template",
       "/tmp/template.jinja",
       "--tools",
-      "read,bash"
+      "read,bash",
+      "--demo-initial-prompt",
+      "story",
+      "--demo-followup-prompt",
+      "again",
+      "--demo-initial-prompt-file",
+      "/tmp/initial.txt",
+      "--demo-followup-prompt-file",
+      "/tmp/followup.txt"
     ]);
     expect(options).toMatchObject({
       model: "custom",
       provider: "vllm",
       customProviderId: "my-provider",
       providersFile: "/tmp/localpi-providers.json",
+      modelProfileFile: "/tmp/local-model-profile.json",
+      modelReasoning: true,
+      modelThinkingFormat: "qwen-chat-template",
       stateDir: "/tmp/localpi-state",
       sessionDir: "/tmp/localpi-sessions",
       piCommand: "my-pi",
@@ -118,7 +137,11 @@ describe("localpi option parsing", () => {
       gpuLayers: 0,
       parallel: 2,
       chatTemplate: "/tmp/template.jinja",
-      tools: "read,bash"
+      tools: "read,bash",
+      demoInitialPrompt: "story",
+      demoFollowupPrompt: "again",
+      demoInitialPromptFile: "/tmp/initial.txt",
+      demoFollowupPromptFile: "/tmp/followup.txt"
     });
     expect(parseLocalpiArgs(["--llama-server", "/opt/bin/other"]).serverCommand).toBe(
       "/opt/bin/other"
@@ -139,6 +162,7 @@ describe("localpi option parsing", () => {
     expect(text).toContain("localpi [localpi options] [pi options/messages]");
     expect(text).toContain("--runtime <kind>");
     expect(text).toContain("--thinking <level>");
+    expect(text).toContain("--demo");
   });
 });
 
@@ -151,8 +175,19 @@ describe("localpi environment defaults", () => {
     "LOCALPI_MODEL",
     "LOCALPI_PROVIDER",
     "LOCALPI_PROVIDERS_FILE",
+    "LOCALPI_MODEL_PROFILE",
+    "LOCALPI_MODEL_REASONING",
+    "LOCALPI_MODEL_THINKING_FORMAT",
+    "LOCALPAGER_AGENT_PROFILE",
+    "LOCALPAGER_AGENT_REASONING",
+    "LOCALPAGER_AGENT_THINKING_FORMAT",
     "LOCALPI_SESSION_DIR",
-    "LOCALPI_THINKING"
+    "LOCALPI_THINKING",
+    "LOCALPI_DEMO",
+    "LOCALPI_DEMO_INITIAL_PROMPT",
+    "LOCALPI_DEMO_FOLLOWUP_PROMPT",
+    "LOCALPI_DEMO_INITIAL_PROMPT_FILE",
+    "LOCALPI_DEMO_FOLLOWUP_PROMPT_FILE"
   ] as const;
   const previous = new Map(names.map((name) => [name, process.env[name]]));
 
@@ -175,8 +210,16 @@ describe("localpi environment defaults", () => {
     process.env["LOCALPI_MODEL"] = "env-model";
     process.env["LOCALPI_PROVIDER"] = "env-provider";
     process.env["LOCALPI_PROVIDERS_FILE"] = "/tmp/env-providers.json";
+    process.env["LOCALPI_MODEL_PROFILE"] = "/tmp/env-profile.json";
+    process.env["LOCALPI_MODEL_REASONING"] = "yes";
+    process.env["LOCALPI_MODEL_THINKING_FORMAT"] = "deepseek";
     process.env["LOCALPI_SESSION_DIR"] = "/tmp/localpi-env-sessions";
     process.env["LOCALPI_THINKING"] = "medium";
+    process.env["LOCALPI_DEMO"] = "true";
+    process.env["LOCALPI_DEMO_INITIAL_PROMPT"] = "env story";
+    process.env["LOCALPI_DEMO_FOLLOWUP_PROMPT"] = "env again";
+    process.env["LOCALPI_DEMO_INITIAL_PROMPT_FILE"] = "/tmp/env-initial.txt";
+    process.env["LOCALPI_DEMO_FOLLOWUP_PROMPT_FILE"] = "/tmp/env-followup.txt";
 
     expect(parseLocalpiArgs([])).toMatchObject({
       baseUrl: "http://127.0.0.1:9999/v1",
@@ -186,20 +229,81 @@ describe("localpi environment defaults", () => {
       model: "env-model",
       provider: "env-provider",
       providersFile: "/tmp/env-providers.json",
+      modelProfileFile: "/tmp/env-profile.json",
+      modelReasoning: true,
+      modelThinkingFormat: "deepseek",
       sessionDir: "/tmp/localpi-env-sessions",
-      thinking: "medium"
+      thinking: "medium",
+      demo: true,
+      demoFromCli: false,
+      demoInitialPrompt: "env story",
+      demoFollowupPrompt: "env again",
+      demoInitialPromptFile: "/tmp/env-initial.txt",
+      demoFollowupPromptFile: "/tmp/env-followup.txt"
     });
   });
 
-  it("defaults thinking to off when LOCALPI_THINKING is not set", () => {
+  it("accepts LocalPager agent capability profile environment fallbacks", () => {
+    process.env["LOCALPAGER_AGENT_PROFILE"] = "/tmp/localpager-profile.json";
+    process.env["LOCALPAGER_AGENT_REASONING"] = "true";
+    process.env["LOCALPAGER_AGENT_THINKING_FORMAT"] = "qwen-chat-template";
+
+    expect(parseLocalpiArgs([])).toMatchObject({
+      modelProfileFile: "/tmp/localpager-profile.json",
+      modelReasoning: true,
+      modelThinkingFormat: "qwen-chat-template"
+    });
+  });
+
+  it("defaults thinking to medium when LOCALPI_THINKING is not set", () => {
     delete process.env["LOCALPI_THINKING"];
     expect(parseLocalpiArgs([])).toMatchObject({
-      thinking: "off"
+      thinking: "medium"
     });
   });
 
   it("rejects non boolean-like environment toggles", () => {
     process.env["LOCALPI_APPROVAL"] = "maybe";
     expect(() => parseLocalpiArgs([])).toThrow("LOCALPI_APPROVAL must be boolean-like, got maybe");
+  });
+
+  it("lets explicit demo flags override environment prompt values", () => {
+    process.env["LOCALPI_DEMO_INITIAL_PROMPT"] = "env story";
+    process.env["LOCALPI_DEMO_FOLLOWUP_PROMPT"] = "env again";
+    process.env["LOCALPI_DEMO_INITIAL_PROMPT_FILE"] = "/tmp/env-initial.txt";
+    process.env["LOCALPI_DEMO_FOLLOWUP_PROMPT_FILE"] = "/tmp/env-followup.txt";
+    expect(
+      parseLocalpiArgs([
+        "--demo-initial-prompt",
+        "cli story",
+        "--demo-followup-prompt",
+        "cli again"
+      ])
+    ).toMatchObject({
+      demoInitialPrompt: "cli story",
+      demoFollowupPrompt: "cli again",
+      demoInitialPromptFile: undefined,
+      demoFollowupPromptFile: undefined
+    });
+  });
+
+  it("keeps explicit demo prompt files ahead of explicit demo prompt text", () => {
+    expect(
+      parseLocalpiArgs([
+        "--demo-initial-prompt-file",
+        "/tmp/cli-initial.txt",
+        "--demo-initial-prompt",
+        "cli story",
+        "--demo-followup-prompt-file",
+        "/tmp/cli-followup.txt",
+        "--demo-followup-prompt",
+        "cli again"
+      ])
+    ).toMatchObject({
+      demoInitialPrompt: "cli story",
+      demoInitialPromptFile: "/tmp/cli-initial.txt",
+      demoFollowupPrompt: "cli again",
+      demoFollowupPromptFile: "/tmp/cli-followup.txt"
+    });
   });
 });

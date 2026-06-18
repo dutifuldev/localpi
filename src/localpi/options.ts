@@ -4,6 +4,7 @@ import { normalizeBaseUrl } from "../llm/openai.js";
 
 export type RuntimeKind = "auto" | "llama-server" | "lmstudio" | "vllm" | "openai-compatible";
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ModelThinkingFormat = "deepseek" | "qwen-chat-template";
 
 export const thinkingLevels: readonly ThinkingLevel[] = [
   "off",
@@ -21,6 +22,9 @@ export type LocalpiOptions = {
   readonly provider: string | undefined;
   readonly customProviderId: string;
   readonly providersFile: string | undefined;
+  readonly modelProfileFile: string | undefined;
+  readonly modelReasoning: boolean | undefined;
+  readonly modelThinkingFormat: ModelThinkingFormat | undefined;
   readonly stateDir: string;
   readonly sessionDir: string;
   readonly piCommand: string;
@@ -37,6 +41,12 @@ export type LocalpiOptions = {
   readonly tools: string | undefined;
   readonly approval: boolean;
   readonly tokenStatus: boolean;
+  readonly demo: boolean;
+  readonly demoFromCli: boolean;
+  readonly demoInitialPrompt: string | undefined;
+  readonly demoInitialPromptFile: string | undefined;
+  readonly demoFollowupPrompt: string | undefined;
+  readonly demoFollowupPromptFile: string | undefined;
   readonly status: boolean;
   readonly stop: boolean;
   readonly list: boolean;
@@ -53,10 +63,17 @@ export function defaultOptions(): LocalpiOptions {
     provider: process.env["LOCALPI_PROVIDER"],
     customProviderId: envString("LOCALPI_PROVIDER_ID", "local-openai"),
     providersFile: process.env["LOCALPI_PROVIDERS_FILE"],
+    modelProfileFile:
+      process.env["LOCALPI_MODEL_PROFILE"] ?? process.env["LOCALPAGER_AGENT_PROFILE"],
+    modelReasoning: envOptionalBoolean("LOCALPI_MODEL_REASONING", "LOCALPAGER_AGENT_REASONING"),
+    modelThinkingFormat: envOptionalThinkingFormat(
+      "LOCALPI_MODEL_THINKING_FORMAT",
+      "LOCALPAGER_AGENT_THINKING_FORMAT"
+    ),
     stateDir,
     sessionDir: defaultSessionDir(stateDir),
     piCommand: envString("LOCALPI_PI_CMD", "npx -y @earendil-works/pi-coding-agent@latest"),
-    thinking: parseThinkingLevel(envString("LOCALPI_THINKING", "off")),
+    thinking: parseThinkingLevel(envString("LOCALPI_THINKING", "medium")),
     contextWindow: envOptionalPositiveInteger("LOCALPI_CONTEXT_WINDOW"),
     maxTokens: envPositiveInteger("LOCALPI_MAX_TOKENS", "8192"),
     timeoutMs: envPositiveInteger("LOCALPI_TIMEOUT_MS", "3000"),
@@ -69,6 +86,12 @@ export function defaultOptions(): LocalpiOptions {
     tools: envString("LOCALPI_TOOLS", "read,bash,edit,write,grep,find,ls"),
     approval: envBoolean("LOCALPI_APPROVAL", true),
     tokenStatus: envBoolean("LOCALPI_TOKEN_STATUS", true),
+    demo: envBoolean("LOCALPI_DEMO", false),
+    demoFromCli: false,
+    demoInitialPrompt: process.env["LOCALPI_DEMO_INITIAL_PROMPT"],
+    demoInitialPromptFile: process.env["LOCALPI_DEMO_INITIAL_PROMPT_FILE"],
+    demoFollowupPrompt: process.env["LOCALPI_DEMO_FOLLOWUP_PROMPT"],
+    demoFollowupPromptFile: process.env["LOCALPI_DEMO_FOLLOWUP_PROMPT_FILE"],
     status: false,
     stop: false,
     list: false,
@@ -79,6 +102,7 @@ export function defaultOptions(): LocalpiOptions {
 export function parseLocalpiArgs(args: readonly string[]): LocalpiOptions {
   let options = defaultOptions();
   const forwardedArgs: string[] = [];
+  const demoPromptFlags = demoPromptFlagTracker();
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === undefined) {
@@ -91,6 +115,7 @@ export function parseLocalpiArgs(args: readonly string[]): LocalpiOptions {
     if (arg === "-h" || arg === "--help") {
       return { ...options, forwardedArgs: ["--help"] };
     }
+    trackDemoPromptFlag(demoPromptFlags, arg);
     const parsed = parseLocalpiFlag(options, args, index);
     if (parsed !== undefined) {
       options = parsed.options;
@@ -99,7 +124,7 @@ export function parseLocalpiArgs(args: readonly string[]): LocalpiOptions {
     }
     forwardedArgs.push(arg);
   }
-  return { ...options, forwardedArgs };
+  return normalizeDemoPromptPrecedence({ ...options, forwardedArgs }, demoPromptFlags);
 }
 
 export function usage(): string {
@@ -126,8 +151,21 @@ export function usage(): string {
     "  --chat-template <path>   llama.cpp chat template file",
     "  --tools <list>           Pi tools allow list",
     "  --providers-file <path>  localpi provider registry JSON",
+    "  --model-profile <path>   local model capability profile JSON",
+    "  --model-reasoning <bool> override generated Pi reasoning capability",
+    "  --model-thinking-format <format>",
+    "                          override generated Pi thinking format",
     "  --no-approval           do not ask before tool calls",
     "  --no-token-status       do not install token status extension",
+    "  --demo                  endlessly run Pi prompts for demo mode",
+    "  --demo-initial-prompt <text>",
+    "                          first demo prompt",
+    "  --demo-followup-prompt <text>",
+    "                          repeated demo prompt after the first run",
+    "  --demo-initial-prompt-file <path>",
+    "                          UTF-8 file for the first demo prompt",
+    "  --demo-followup-prompt-file <path>",
+    "                          UTF-8 file for repeated demo prompts",
     "  --status                print runtime status and exit",
     "  --stop                  stop the localpi-owned llama-server",
     "  --list                  list model aliases",
@@ -153,6 +191,13 @@ export function usage(): string {
 type ParseResult = {
   readonly options: LocalpiOptions;
   readonly advance: number;
+};
+
+type DemoPromptFlagTracker = {
+  initialText: boolean;
+  initialFile: boolean;
+  followupText: boolean;
+  followupFile: boolean;
 };
 
 function parseLocalpiFlag(
@@ -183,7 +228,8 @@ const booleanFlagUpdaters: Readonly<Record<string, BooleanUpdater>> = {
   "--stop": (options) => ({ ...options, stop: true }),
   "--list": (options) => ({ ...options, list: true }),
   "--no-approval": (options) => ({ ...options, approval: false }),
-  "--no-token-status": (options) => ({ ...options, tokenStatus: false })
+  "--no-token-status": (options) => ({ ...options, tokenStatus: false }),
+  "--demo": (options) => ({ ...options, demo: true, demoFromCli: true })
 };
 
 type OptionUpdater = (options: LocalpiOptions, value: string) => LocalpiOptions;
@@ -195,6 +241,12 @@ const valueFlagUpdaters: Readonly<Record<string, OptionUpdater>> = {
   "--provider": (options, value) => ({ ...options, provider: value }),
   "--provider-id": (options, value) => ({ ...options, customProviderId: value }),
   "--providers-file": (options, value) => ({ ...options, providersFile: value }),
+  "--model-profile": (options, value) => ({ ...options, modelProfileFile: value }),
+  "--model-reasoning": (options, value) => ({ ...options, modelReasoning: parseBoolean(value) }),
+  "--model-thinking-format": (options, value) => ({
+    ...options,
+    modelThinkingFormat: parseModelThinkingFormat(value)
+  }),
   "--state-dir": (options, value) => ({ ...options, stateDir: value }),
   "--session-dir": (options, value) => ({ ...options, sessionDir: value }),
   "--pi-command": (options, value) => ({ ...options, piCommand: value }),
@@ -213,7 +265,17 @@ const valueFlagUpdaters: Readonly<Record<string, OptionUpdater>> = {
   "--gpu-layers": (options, value) => ({ ...options, gpuLayers: parseNonNegativeInteger(value) }),
   "--parallel": (options, value) => ({ ...options, parallel: parsePositiveInteger(value) }),
   "--chat-template": (options, value) => ({ ...options, chatTemplate: value }),
-  "--tools": (options, value) => ({ ...options, tools: value })
+  "--tools": (options, value) => ({ ...options, tools: value }),
+  "--demo-initial-prompt": (options, value) => ({ ...options, demoInitialPrompt: value }),
+  "--demo-followup-prompt": (options, value) => ({ ...options, demoFollowupPrompt: value }),
+  "--demo-initial-prompt-file": (options, value) => ({
+    ...options,
+    demoInitialPromptFile: value
+  }),
+  "--demo-followup-prompt-file": (options, value) => ({
+    ...options,
+    demoFollowupPromptFile: value
+  })
 };
 
 function parseValueFlag(
@@ -227,6 +289,45 @@ function parseValueFlag(
     return undefined;
   }
   return { options: updater(options, requiredValue(args, index + 1, flag)), advance: 1 };
+}
+
+function demoPromptFlagTracker(): DemoPromptFlagTracker {
+  return {
+    initialText: false,
+    initialFile: false,
+    followupText: false,
+    followupFile: false
+  };
+}
+
+function trackDemoPromptFlag(tracker: DemoPromptFlagTracker, arg: string): void {
+  switch (arg) {
+    case "--demo-initial-prompt":
+      tracker.initialText = true;
+      return;
+    case "--demo-initial-prompt-file":
+      tracker.initialFile = true;
+      return;
+    case "--demo-followup-prompt":
+      tracker.followupText = true;
+      return;
+    case "--demo-followup-prompt-file":
+      tracker.followupFile = true;
+      return;
+  }
+}
+
+function normalizeDemoPromptPrecedence(
+  options: LocalpiOptions,
+  tracker: DemoPromptFlagTracker
+): LocalpiOptions {
+  return {
+    ...options,
+    demoInitialPromptFile:
+      tracker.initialText && !tracker.initialFile ? undefined : options.demoInitialPromptFile,
+    demoFollowupPromptFile:
+      tracker.followupText && !tracker.followupFile ? undefined : options.demoFollowupPromptFile
+  };
 }
 
 function parseRuntime(value: string): RuntimeKind {
@@ -255,6 +356,15 @@ export function parseThinkingLevel(value: string): ThinkingLevel {
   );
 }
 
+function parseModelThinkingFormat(value: string): ModelThinkingFormat {
+  if (value === "deepseek" || value === "qwen-chat-template") {
+    return value;
+  }
+  throw new Error(
+    `unknown model thinking format ${value}; expected deepseek or qwen-chat-template`
+  );
+}
+
 function envString(name: string, fallback: string): string {
   return process.env[name] ?? fallback;
 }
@@ -277,11 +387,28 @@ function envOptionalPositiveInteger(name: string): number | undefined {
   return value === undefined ? undefined : parsePositiveInteger(value);
 }
 
+function envOptionalBoolean(primaryName: string, fallbackName: string): boolean | undefined {
+  const [name, value] = envFirst([primaryName, fallbackName]);
+  return value === undefined ? undefined : parseBoolean(value, name);
+}
+
+function envOptionalThinkingFormat(
+  primaryName: string,
+  fallbackName: string
+): ModelThinkingFormat | undefined {
+  const [, value] = envFirst([primaryName, fallbackName]);
+  return value === undefined ? undefined : parseModelThinkingFormat(value);
+}
+
 function envBoolean(name: string, fallback: boolean): boolean {
   const value = process.env[name];
   if (value === undefined) {
     return fallback;
   }
+  return parseBoolean(value, name);
+}
+
+function parseBoolean(value: string, name = "value"): boolean {
   if (["1", "true", "yes", "on"].includes(value.toLowerCase())) {
     return true;
   }
@@ -289,6 +416,16 @@ function envBoolean(name: string, fallback: boolean): boolean {
     return false;
   }
   throw new Error(`${name} must be boolean-like, got ${value}`);
+}
+
+function envFirst(names: readonly string[]): readonly [string, string | undefined] {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value !== undefined) {
+      return [name, value];
+    }
+  }
+  return [names[0] ?? "", undefined];
 }
 
 function defaultSessionDir(stateDir: string): string {

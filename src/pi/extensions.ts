@@ -2,6 +2,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { LocalpiOptions } from "../localpi/options.js";
+import { settingsStatePath } from "../localpi/settings-state.js";
+import { resolveDemoPrompts, type DemoPrompts } from "./demo.js";
 
 export type ExtensionBundle = {
   readonly paths: readonly string[];
@@ -37,8 +39,21 @@ export async function writeDefaultExtensions(
       )
     );
   }
+  if (options.demo) {
+    paths.push(
+      await writeExtension(
+        extensionDir,
+        "demo-mode.ts",
+        demoModeExtensionSource(await resolveDemoPrompts(options))
+      )
+    );
+  }
   paths.push(
-    await writeExtension(extensionDir, "thinking-control.ts", thinkingControlExtensionSource())
+    await writeExtension(
+      extensionDir,
+      "thinking-control.ts",
+      thinkingControlExtensionSource(settingsStatePath(options))
+    )
   );
   if (options.approval) {
     paths.push(await writeExtension(extensionDir, "tool-approval.ts", approvalExtensionSource()));
@@ -56,6 +71,59 @@ async function writeExtension(extensionDir: string, name: string, source: string
   const extensionPath = path.join(extensionDir, name);
   await writeFile(extensionPath, source, "utf8");
   return extensionPath;
+}
+
+function demoModeExtensionSource(prompts: DemoPrompts): string {
+  const initialPromptSource = JSON.stringify(prompts.initial);
+  const followupPromptSource = JSON.stringify(prompts.followup);
+  return `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+const initialPrompt = ${initialPromptSource};
+const followupPrompt = ${followupPromptSource};
+
+export default function localpiDemoMode(pi: ExtensionAPI): void {
+  let started = false;
+  let stopped = false;
+
+  pi.on("session_start", (event, ctx) => {
+    if (started || stopped || event.reason !== "startup" || ctx.mode !== "tui") {
+      return;
+    }
+    started = true;
+    queueMicrotask(() => {
+      if (!stopped) {
+        pi.sendUserMessage(initialPrompt);
+      }
+    });
+  });
+
+  pi.on("turn_end", (event, ctx) => {
+    if (!started || stopped || ctx.mode !== "tui") {
+      return;
+    }
+    if (event.message.role !== "assistant") {
+      return;
+    }
+    switch (event.message.stopReason) {
+      case "aborted":
+      case "error":
+        stopped = true;
+        return;
+      case "toolUse":
+        return;
+    }
+    queueMicrotask(() => {
+      if (!stopped) {
+        pi.sendUserMessage(followupPrompt, { deliverAs: "followUp" });
+      }
+    });
+  });
+
+  pi.on("session_shutdown", () => {
+    stopped = true;
+  });
+}
+`;
 }
 
 function startupModelSelectorExtensionSource(options: StartupModelSelectorOptions): string {
@@ -328,12 +396,16 @@ function textUpdateFromUnknown(value: unknown): TextUpdate {
 `;
 }
 
-function thinkingControlExtensionSource(): string {
-  return `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+function thinkingControlExtensionSource(settingsPath: string): string {
+  const settingsPathSource = JSON.stringify(settingsPath);
+  return `import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 const levels: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+const settingsPath = ${settingsPathSource};
 
 export default function localpiThinkingControl(pi: ExtensionAPI): void {
   pi.registerCommand("thinking", {
@@ -351,6 +423,7 @@ export default function localpiThinkingControl(pi: ExtensionAPI): void {
       }
       pi.setThinkingLevel(level);
       const actual = pi.getThinkingLevel();
+      await persistThinking(actual);
       ctx.ui.notify(
         actual === level ? \`thinking: \${actual}\` : \`thinking: \${actual} (clamped from \${level})\`,
         actual === level ? "info" : "warning"
@@ -358,13 +431,31 @@ export default function localpiThinkingControl(pi: ExtensionAPI): void {
     }
   });
 
-  pi.on("thinking_level_select", (event, ctx) => {
+  pi.on("thinking_level_select", async (event, ctx) => {
+    await persistThinking(event.level);
     ctx.ui.setStatus("localpi-thinking", \`thinking: \${event.level}\`);
   });
 
-  pi.on("session_shutdown", (_event, ctx) => {
+  pi.on("session_shutdown", async (_event, ctx) => {
+    await persistThinking(pi.getThinkingLevel());
     ctx.ui.setStatus("localpi-thinking", undefined);
   });
+}
+
+async function persistThinking(level: ThinkingLevel): Promise<void> {
+  const settings = await readSettings();
+  settings.thinking = level;
+  await mkdir(dirname(settingsPath), { recursive: true });
+  await writeFile(settingsPath, \`\${JSON.stringify(settings, null, 2)}\\n\`, "utf8");
+}
+
+async function readSettings(): Promise<Record<string, unknown>> {
+  try {
+    const value = JSON.parse(await readFile(settingsPath, "utf8"));
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
 }
 
 async function promptThinkingLevel(
