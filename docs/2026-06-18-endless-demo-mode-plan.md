@@ -149,13 +149,13 @@ Prompt file loading should stay in localpi before extension generation. The gene
 - [x] Verify `--demo --status`, `--demo --stop`, and `--demo --list` fail clearly.
 - [x] Verify demo mode rejects missing or `auto` model selection.
 - [x] Verify demo mode rejects forwarded Pi prompt flags.
-- [ ] Unit-test that demo mode writes a generated Pi extension.
-- [ ] Unit-test that the generated extension sends the initial prompt on TUI `session_start`.
-- [ ] Unit-test that the generated extension sends followup prompts after `turn_end`.
-- [ ] Unit-test that demo mode uses the normal Pi launch path and does not pipe prompts over stdin.
+- [x] Unit-test that demo mode writes a generated Pi extension.
+- [x] Unit-test that the generated extension sends the initial prompt on TUI `session_start`.
+- [x] Unit-test that the generated extension sends followup prompts after `turn_end`.
+- [x] Unit-test that demo mode uses the normal Pi launch path and does not pipe prompts over stdin.
 - [x] Unit-test that normal launches are unchanged.
-- [ ] Use a fake `LOCALPI_PI_CMD` to prove demo launches Pi once with the demo extension path.
-- [ ] Verify demo mode does not pass `-p`, `--prompt`, `--mode print`, `--mode json`, or `--mode rpc`.
+- [x] Use a fake `LOCALPI_PI_CMD` to prove demo launches Pi once with the demo extension path.
+- [x] Verify demo mode does not pass `-p`, `--prompt`, `--mode print`, `--mode json`, or `--mode rpc`.
 - [x] Run `npm run check`.
 
 ## Documentation Checklist

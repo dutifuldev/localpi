@@ -49,6 +49,33 @@ describe("Pi extensions", () => {
     }
   });
 
+  it("writes a TUI demo extension when demo mode is enabled", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-ext-"));
+    try {
+      const bundle = await writeDefaultExtensions({
+        ...options(stateDir),
+        demo: true,
+        demoInitialPrompt: "- start story",
+        demoFollowupPrompt: "@keep going"
+      });
+      expect(bundle.paths).toHaveLength(4);
+      expect(path.basename(bundle.paths[0] ?? "")).toBe("demo-mode.ts");
+      const demo = await readFile(bundle.paths[0] ?? "", "utf8");
+      expect(demo).toContain('pi.on("session_start"');
+      expect(demo).toContain('event.reason !== "startup"');
+      expect(demo).toContain('ctx.mode !== "tui"');
+      expect(demo).toContain('pi.on("turn_end"');
+      expect(demo).toContain("pi.sendUserMessage(initialPrompt)");
+      expect(demo).toContain('pi.sendUserMessage(followupPrompt, { deliverAs: "followUp" })');
+      expect(demo).toContain('const initialPrompt = "- start story";');
+      expect(demo).toContain('const followupPrompt = "@keep going";');
+      expect(demo).not.toContain("-p");
+      expect(demo).not.toContain("--prompt");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("writes a Pi-native startup model selector extension when requested", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-ext-"));
     try {

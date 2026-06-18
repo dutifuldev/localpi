@@ -8,7 +8,6 @@ import {
   stopRuntime
 } from "../localpi/runtime.js";
 import { writeRuntimeConfig } from "../pi/config.js";
-import { execDemoLoop } from "../pi/demo.js";
 import { writeDefaultExtensions } from "../pi/extensions.js";
 import { createLaunchPlan, execLaunchPlan } from "../pi/launch.js";
 
@@ -52,7 +51,7 @@ function validateDemoOptions(options: ParsedOptions): void {
   const incompatibleMode = forwardedIncompatibleMode(options.forwardedArgs);
   if (incompatibleMode !== undefined) {
     throw new Error(
-      `--demo cannot be used with forwarded Pi mode ${incompatibleMode}; demo prompts require text stdin`
+      `--demo cannot be used with forwarded Pi mode ${incompatibleMode}; demo mode runs inside Pi TUI`
     );
   }
   const metadataFlag = forwardedMetadataFlag(options.forwardedArgs);
@@ -86,11 +85,11 @@ function validateDemoModel(options: ParsedOptions): void {
 function forwardedIncompatibleMode(args: readonly string[]): string | undefined {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg === "--mode" && args[index + 1] === "rpc") {
-      return "rpc";
+    if (arg === "--mode") {
+      return args[index + 1] ?? "--mode";
     }
-    if (arg === "--mode=rpc") {
-      return "rpc";
+    if (arg?.startsWith("--mode=")) {
+      return arg.slice("--mode=".length);
     }
   }
   return undefined;
@@ -277,9 +276,9 @@ async function launchResolvedRuntime(
   connection: Awaited<ReturnType<typeof resolveRuntime>>,
   extensions: Awaited<ReturnType<typeof writeDefaultExtensions>>
 ): Promise<CommandResult> {
-  const code = options.demo
-    ? await execDemoLoop(options, runtimeConfig, connection, extensions)
-    : await execLaunchPlan(await createLaunchPlan(options, runtimeConfig, connection, extensions));
+  const code = await execLaunchPlan(
+    await createLaunchPlan(options, runtimeConfig, connection, extensions)
+  );
   if (code !== 0) {
     return { code, stdout: "", stderr: "" };
   }

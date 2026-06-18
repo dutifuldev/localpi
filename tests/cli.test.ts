@@ -200,19 +200,19 @@ describe("localpi cli", () => {
     );
   });
 
-  it("rejects forwarded Pi rpc mode in demo mode", async () => {
+  it("rejects forwarded Pi mode overrides in demo mode", async () => {
     const result = await run(["--demo", "--model", "served-model", "--mode", "rpc"]);
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain(
-      "--demo cannot be used with forwarded Pi mode rpc; demo prompts require text stdin"
+      "--demo cannot be used with forwarded Pi mode rpc; demo mode runs inside Pi TUI"
     );
 
-    const equals = await run(["--demo", "--model", "served-model", "--mode=rpc"]);
+    const equals = await run(["--demo", "--model", "served-model", "--mode=json"]);
     expect(equals.code).toBe(2);
     expect(equals.stdout).toBe("");
     expect(equals.stderr).toContain(
-      "--demo cannot be used with forwarded Pi mode rpc; demo prompts require text stdin"
+      "--demo cannot be used with forwarded Pi mode json; demo mode runs inside Pi TUI"
     );
   });
 
@@ -329,13 +329,12 @@ describe("localpi cli", () => {
     expect(result).toEqual({ code: 7, stdout: "", stderr: "" });
   });
 
-  it("runs demo prompts until the child exits non-zero", async () => {
+  it("launches demo mode once with a generated TUI extension", async () => {
     const stateDir = await tempStateDir();
     const baseUrl = await startModelServer("served-model", 4096);
     const scriptPath = path.join(stateDir, "fake-pi.cjs");
-    const countPath = path.join(stateDir, "demo-count.txt");
-    const logPath = path.join(stateDir, "demo-prompts.jsonl");
-    await writeFile(scriptPath, fakeDemoPiScript(countPath, logPath));
+    const logPath = path.join(stateDir, "demo-launch.json");
+    await writeFile(scriptPath, fakePiLaunchScript(logPath));
 
     const result = await run([
       "--demo",
@@ -358,26 +357,25 @@ describe("localpi cli", () => {
       "--no-tools"
     ]);
 
-    expect(result).toEqual({ code: 7, stdout: "", stderr: "" });
-    const records = (await readFile(logPath, "utf8"))
-      .trim()
-      .split("\n")
-      .map(
-        (line) => JSON.parse(line) as { readonly args: readonly string[]; readonly prompt: string }
-      );
-    expect(records.map((record) => record.prompt)).toEqual([
-      "- start story",
-      "@keep going",
-      "@keep going"
-    ]);
-    expect(records.every((record) => record.args.includes("--no-tools"))).toBe(true);
-    expect(records.every((record) => !record.args.includes("-p"))).toBe(true);
-    const sessionIds = records.map((record) => {
-      const index = record.args.indexOf("--session-id");
-      return index < 0 ? undefined : record.args[index + 1];
-    });
-    expect(sessionIds[0]).toMatch(/^localpi-demo-/u);
-    expect(new Set(sessionIds).size).toBe(1);
+    expect(result).toEqual({ code: 0, stdout: "", stderr: "" });
+    const record = JSON.parse(await readFile(logPath, "utf8")) as {
+      readonly args: readonly string[];
+    };
+    expect(record.args).toContain("--no-tools");
+    expect(record.args).not.toContain("-p");
+    expect(record.args).not.toContain("--prompt");
+    expect(record.args).not.toContain("--session-id");
+    const extensionArgs = extensionPaths(record.args);
+    const demoPath = extensionArgs.find(
+      (extensionPath) => path.basename(extensionPath) === "demo-mode.ts"
+    );
+    expect(demoPath).toBe(path.join(stateDir, "pi-extensions", "demo-mode.ts"));
+    const demo = await readFile(demoPath ?? "", "utf8");
+    expect(demo).toContain('const initialPrompt = "- start story";');
+    expect(demo).toContain('const followupPrompt = "@keep going";');
+    expect(demo).toContain('pi.on("session_start"');
+    expect(demo).toContain('pi.on("turn_end"');
+    expect(demo).toContain("pi.sendUserMessage(initialPrompt)");
   });
 
   async function startModelServer(model: string, contextWindow: number): Promise<string> {
@@ -448,21 +446,23 @@ describe("localpi cli", () => {
     });
   }
 
-  function fakeDemoPiScript(countPath: string, logPath: string): string {
+  function extensionPaths(args: readonly string[]): readonly string[] {
+    const paths: string[] = [];
+    for (let index = 0; index < args.length; index += 1) {
+      const extensionPath = args[index + 1];
+      if (args[index] === "--extension" && extensionPath !== undefined) {
+        paths.push(extensionPath);
+      }
+    }
+    return paths;
+  }
+
+  function fakePiLaunchScript(logPath: string): string {
     return [
       "const fs = require('node:fs');",
       "const args = process.argv.slice(2);",
-      `const countPath = ${JSON.stringify(countPath)};`,
       `const logPath = ${JSON.stringify(logPath)};`,
-      "let prompt = '';",
-      "process.stdin.setEncoding('utf8');",
-      "process.stdin.on('data', (chunk) => { prompt += chunk; });",
-      "process.stdin.on('end', () => {",
-      "  const count = fs.existsSync(countPath) ? Number(fs.readFileSync(countPath, 'utf8')) : 0;",
-      "  fs.writeFileSync(countPath, String(count + 1));",
-      "  fs.appendFileSync(logPath, `${JSON.stringify({ args, prompt })}\\n`);",
-      "  process.exit(count >= 2 ? 7 : 0);",
-      "});"
+      "fs.writeFileSync(logPath, JSON.stringify({ args }));"
     ].join("\n");
   }
 });

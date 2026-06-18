@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { LocalpiOptions } from "../localpi/options.js";
+import { resolveDemoPrompts, type DemoPrompts } from "./demo.js";
 
 export type ExtensionBundle = {
   readonly paths: readonly string[];
@@ -37,6 +38,15 @@ export async function writeDefaultExtensions(
       )
     );
   }
+  if (options.demo) {
+    paths.push(
+      await writeExtension(
+        extensionDir,
+        "demo-mode.ts",
+        demoModeExtensionSource(await resolveDemoPrompts(options))
+      )
+    );
+  }
   paths.push(
     await writeExtension(extensionDir, "thinking-control.ts", thinkingControlExtensionSource())
   );
@@ -56,6 +66,48 @@ async function writeExtension(extensionDir: string, name: string, source: string
   const extensionPath = path.join(extensionDir, name);
   await writeFile(extensionPath, source, "utf8");
   return extensionPath;
+}
+
+function demoModeExtensionSource(prompts: DemoPrompts): string {
+  const initialPromptSource = JSON.stringify(prompts.initial);
+  const followupPromptSource = JSON.stringify(prompts.followup);
+  return `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+const initialPrompt = ${initialPromptSource};
+const followupPrompt = ${followupPromptSource};
+
+export default function localpiDemoMode(pi: ExtensionAPI): void {
+  let started = false;
+  let stopped = false;
+
+  pi.on("session_start", (event, ctx) => {
+    if (started || stopped || event.reason !== "startup" || ctx.mode !== "tui") {
+      return;
+    }
+    started = true;
+    queueMicrotask(() => {
+      if (!stopped) {
+        pi.sendUserMessage(initialPrompt);
+      }
+    });
+  });
+
+  pi.on("turn_end", (_event, ctx) => {
+    if (!started || stopped || ctx.mode !== "tui") {
+      return;
+    }
+    queueMicrotask(() => {
+      if (!stopped) {
+        pi.sendUserMessage(followupPrompt, { deliverAs: "followUp" });
+      }
+    });
+  });
+
+  pi.on("session_shutdown", () => {
+    stopped = true;
+  });
+}
+`;
 }
 
 function startupModelSelectorExtensionSource(options: StartupModelSelectorOptions): string {

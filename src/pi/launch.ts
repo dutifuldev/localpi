@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import type { ChildProcess } from "node:child_process";
 import type { StdioOptions } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 
@@ -14,26 +13,13 @@ export type LaunchPlan = {
   readonly env: Readonly<Record<string, string>>;
 };
 
-export type LaunchPlanOptions = {
-  readonly forwardedArgs?: readonly string[];
-};
-
-export type LaunchExecutionOptions = {
-  readonly detached?: boolean;
-  readonly forwardSignals?: boolean;
-  readonly input?: string;
-  readonly onChild?: (child: ChildProcess) => void;
-};
-
 export async function createLaunchPlan(
   options: LocalpiOptions,
   runtimeConfig: RuntimeConfig,
   connection: RuntimeConnection,
-  extensions: ExtensionBundle,
-  launchOptions: LaunchPlanOptions = {}
+  extensions: ExtensionBundle
 ): Promise<LaunchPlan> {
   await mkdir(options.sessionDir, { recursive: true });
-  const forwardedArgs = launchOptions.forwardedArgs ?? options.forwardedArgs;
   return {
     command: options.piCommand,
     args: [
@@ -46,7 +32,7 @@ export async function createLaunchPlan(
       ...extensionArgs(extensions),
       "--append-system-prompt",
       extensions.systemPrompt,
-      ...withDefaultTools(forwardedArgs, options.tools)
+      ...withDefaultTools(options.forwardedArgs, options.tools)
     ],
     env: {
       PI_CODING_AGENT_DIR: runtimeConfig.configDir,
@@ -58,63 +44,24 @@ export async function createLaunchPlan(
   };
 }
 
-export async function execLaunchPlan(
-  plan: LaunchPlan,
-  options: LaunchExecutionOptions = {}
-): Promise<number> {
-  const stdio: StdioOptions =
-    options.input === undefined ? "inherit" : ["pipe", "inherit", "inherit"];
+export async function execLaunchPlan(plan: LaunchPlan): Promise<number> {
+  const stdio: StdioOptions = "inherit";
   const child = spawn(shellCommand(plan.command, plan.args), {
     shell: true,
     stdio,
-    detached: options.detached === true,
     env: { ...process.env, ...plan.env }
   });
-  options.onChild?.(child);
-  writeLaunchInput(child, options.input);
   child.stdout?.resume();
   return await new Promise<number>((resolve, reject) => {
     child.on("error", reject);
     child.on("exit", (code, signal) => {
       if (signal !== null) {
-        if (options.forwardSignals !== false) {
-          process.kill(process.pid, signal);
-          return;
-        }
-        resolve(signalExitCode(signal));
+        process.kill(process.pid, signal);
         return;
       }
       resolve(code ?? 0);
     });
   });
-}
-
-function writeLaunchInput(child: ChildProcess, input: string | undefined): void {
-  if (input === undefined || child.stdin === null) {
-    return;
-  }
-  child.stdin.on("error", ignoreLaunchInputError);
-  child.stdin.end(input);
-}
-
-function ignoreLaunchInputError(error: Error): void {
-  void error;
-}
-
-export function terminateLaunchProcess(child: ChildProcess, signal: NodeJS.Signals): void {
-  const pid = child.pid;
-  if (pid === undefined) {
-    return;
-  }
-  if (process.platform === "win32") {
-    child.kill(signal);
-    return;
-  }
-  try {
-    process.kill(-pid, signal);
-  } catch {
-    child.kill(signal);
-  }
 }
 
 function shellCommand(command: string, args: readonly string[]): string {
@@ -140,15 +87,4 @@ function hasToolFlag(args: readonly string[]): boolean {
   return args.some(
     (arg) => arg === "--tools" || arg === "-t" || arg === "--no-tools" || arg === "-nt"
   );
-}
-
-function signalExitCode(signal: NodeJS.Signals): number {
-  switch (signal) {
-    case "SIGINT":
-      return 130;
-    case "SIGTERM":
-      return 143;
-    default:
-      return 1;
-  }
 }
