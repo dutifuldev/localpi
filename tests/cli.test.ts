@@ -12,6 +12,7 @@ describe("localpi cli", () => {
   const servers: ReturnType<typeof createServer>[] = [];
   const tempDirs: string[] = [];
   const previousModelsFile = process.env["LOCALPI_MODELS_FILE"];
+  const previousDemo = process.env["LOCALPI_DEMO"];
   const previousStdinIsTty = process.stdin.isTTY;
   const previousStderrIsTty = process.stderr.isTTY;
 
@@ -22,6 +23,11 @@ describe("localpi cli", () => {
       delete process.env["LOCALPI_MODELS_FILE"];
     } else {
       process.env["LOCALPI_MODELS_FILE"] = previousModelsFile;
+    }
+    if (previousDemo === undefined) {
+      delete process.env["LOCALPI_DEMO"];
+    } else {
+      process.env["LOCALPI_DEMO"] = previousDemo;
     }
     await Promise.all(
       servers.map(
@@ -47,6 +53,19 @@ describe("localpi cli", () => {
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("localpi [localpi options] [pi options/messages]");
     expect(result.stderr).toBe("");
+  });
+
+  it("prints usage for --help even when demo mode is enabled", async () => {
+    const result = await run(["--demo", "--help"]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("localpi [localpi options] [pi options/messages]");
+    expect(result.stderr).toBe("");
+
+    process.env["LOCALPI_DEMO"] = "true";
+    const envResult = await run(["--help"]);
+    expect(envResult.code).toBe(0);
+    expect(envResult.stdout).toContain("localpi [localpi options] [pi options/messages]");
+    expect(envResult.stderr).toBe("");
   });
 
   it("lists configured and built-in aliases for --list", async () => {
@@ -163,6 +182,13 @@ describe("localpi cli", () => {
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain(
       "--demo cannot be used with forwarded Pi session flag --session-id"
+    );
+
+    const equals = await run(["--demo", "--session-id=manual-session"]);
+    expect(equals.code).toBe(2);
+    expect(equals.stdout).toBe("");
+    expect(equals.stderr).toContain(
+      "--demo cannot be used with forwarded Pi session flag --session-id=manual-session"
     );
   });
 

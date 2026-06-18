@@ -15,6 +15,10 @@ import { createLaunchPlan, execLaunchPlan } from "../pi/launch.js";
 export async function run(args: readonly string[]): Promise<CommandResult> {
   try {
     const options = parseLocalpiArgs(args);
+    const helpResult = helpCommandResult(options);
+    if (helpResult !== undefined) {
+      return helpResult;
+    }
     validateDemoOptions(options);
     const commandResult = await immediateCommandResult(options);
     if (commandResult !== undefined) {
@@ -114,16 +118,30 @@ function forwardedSessionFlag(args: readonly string[]): string | undefined {
   return args.find((arg) => isForwardedSessionFlag(arg));
 }
 
+const forwardedSessionFlags = new Set([
+  "--continue",
+  "-c",
+  "--resume",
+  "-r",
+  "--session",
+  "--session-id",
+  "--fork",
+  "--no-session"
+]);
+
+const forwardedSessionEqualsFlags = [
+  "--continue",
+  "--resume",
+  "--session",
+  "--session-id",
+  "--fork",
+  "--no-session"
+] as const;
+
 function isForwardedSessionFlag(arg: string): boolean {
   return (
-    arg === "--continue" ||
-    arg === "-c" ||
-    arg === "--resume" ||
-    arg === "-r" ||
-    arg === "--session" ||
-    arg === "--session-id" ||
-    arg === "--fork" ||
-    arg === "--no-session"
+    forwardedSessionFlags.has(arg) ||
+    forwardedSessionEqualsFlags.some((flag) => arg.startsWith(`${flag}=`))
   );
 }
 
@@ -227,9 +245,6 @@ async function launchResolvedRuntime(
 }
 
 async function immediateCommandResult(options: ParsedOptions): Promise<CommandResult | undefined> {
-  if (options.forwardedArgs.length === 1 && options.forwardedArgs[0] === "--help") {
-    return ok(usage());
-  }
   if (options.list) {
     return ok(`${await aliasListOutput()}\n`);
   }
@@ -237,6 +252,12 @@ async function immediateCommandResult(options: ParsedOptions): Promise<CommandRe
     return ok(`${await stopRuntime(options)}\n`);
   }
   return options.status ? ok(`${await statusOutput(options)}\n`) : undefined;
+}
+
+function helpCommandResult(options: ParsedOptions): CommandResult | undefined {
+  return options.forwardedArgs.length === 1 && options.forwardedArgs[0] === "--help"
+    ? ok(usage())
+    : undefined;
 }
 
 function startupModelSelectorOptions(
