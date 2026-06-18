@@ -14,11 +14,11 @@ describe("localpi cli", () => {
   const previousModelsFile = process.env["LOCALPI_MODELS_FILE"];
   const previousDemo = process.env["LOCALPI_DEMO"];
   const previousStdinIsTty = process.stdin.isTTY;
-  const previousStderrIsTty = process.stderr.isTTY;
+  const previousStdoutIsTty = process.stdout.isTTY;
 
   afterEach(async () => {
     setTty("stdin", previousStdinIsTty);
-    setTty("stderr", previousStderrIsTty);
+    setTty("stdout", previousStdoutIsTty);
     if (previousModelsFile === undefined) {
       delete process.env["LOCALPI_MODELS_FILE"];
     } else {
@@ -175,6 +175,9 @@ describe("localpi cli", () => {
   });
 
   it("rejects forwarded Pi prompt inputs in demo mode", async () => {
+    setTty("stdin", true);
+    setTty("stdout", true);
+
     const result = await run(["--demo", "--model", "served-model", "-p", "say ok"]);
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
@@ -201,6 +204,9 @@ describe("localpi cli", () => {
   });
 
   it("rejects forwarded Pi mode overrides in demo mode", async () => {
+    setTty("stdin", true);
+    setTty("stdout", true);
+
     const result = await run(["--demo", "--model", "served-model", "--mode", "rpc"]);
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
@@ -217,6 +223,9 @@ describe("localpi cli", () => {
   });
 
   it("rejects forwarded Pi session flags in demo mode", async () => {
+    setTty("stdin", true);
+    setTty("stdout", true);
+
     const result = await run([
       "--demo",
       "--model",
@@ -239,6 +248,9 @@ describe("localpi cli", () => {
   });
 
   it("rejects forwarded Pi metadata commands in demo mode", async () => {
+    setTty("stdin", true);
+    setTty("stdout", true);
+
     const listModels = await run(["--demo", "--model", "served-model", "--list-models"]);
     expect(listModels.code).toBe(2);
     expect(listModels.stdout).toBe("");
@@ -288,7 +300,7 @@ describe("localpi cli", () => {
     const stateDir = await tempStateDir();
     const baseUrl = await startModelListServer(["first", "second"]);
     setTty("stdin", true);
-    setTty("stderr", true);
+    setTty("stdout", true);
 
     const result = await run([
       "--runtime",
@@ -335,6 +347,8 @@ describe("localpi cli", () => {
     const scriptPath = path.join(stateDir, "fake-pi.cjs");
     const logPath = path.join(stateDir, "demo-launch.json");
     await writeFile(scriptPath, fakePiLaunchScript(logPath));
+    setTty("stdin", true);
+    setTty("stdout", true);
 
     const result = await run([
       "--demo",
@@ -376,6 +390,22 @@ describe("localpi cli", () => {
     expect(demo).toContain('pi.on("session_start"');
     expect(demo).toContain('pi.on("turn_end"');
     expect(demo).toContain("pi.sendUserMessage(initialPrompt)");
+  });
+
+  it("requires a TTY in demo mode", async () => {
+    setTty("stdin", false);
+    setTty("stdout", true);
+    const noStdin = await run(["--demo", "--model", "served-model"]);
+    expect(noStdin.code).toBe(2);
+    expect(noStdin.stdout).toBe("");
+    expect(noStdin.stderr).toContain("--demo requires an interactive TTY on stdin and stdout");
+
+    setTty("stdin", true);
+    setTty("stdout", false);
+    const noStdout = await run(["--demo", "--model", "served-model"]);
+    expect(noStdout.code).toBe(2);
+    expect(noStdout.stdout).toBe("");
+    expect(noStdout.stderr).toContain("--demo requires an interactive TTY on stdin and stdout");
   });
 
   async function startModelServer(model: string, contextWindow: number): Promise<string> {
@@ -439,7 +469,7 @@ describe("localpi cli", () => {
     return stateDir;
   }
 
-  function setTty(stream: "stdin" | "stderr", value: boolean | undefined): void {
+  function setTty(stream: "stdin" | "stdout", value: boolean | undefined): void {
     Object.defineProperty(process[stream], "isTTY", {
       configurable: true,
       value

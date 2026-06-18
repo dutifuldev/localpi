@@ -65,8 +65,11 @@ describe("Pi extensions", () => {
       expect(demo).toContain('event.reason !== "startup"');
       expect(demo).toContain('ctx.mode !== "tui"');
       expect(demo).toContain('pi.on("turn_end"');
-      expect(demo).toContain('event.message.stopReason === "aborted"');
-      expect(demo).toContain('event.message.stopReason === "error"');
+      expect(demo).toContain('event.message.role !== "assistant"');
+      expect(demo).toContain("switch (event.message.stopReason)");
+      expect(demo).toContain('case "aborted"');
+      expect(demo).toContain('case "error"');
+      expect(demo).toContain('case "toolUse"');
       expect(demo).toContain("stopped = true");
       expect(demo).toContain("pi.sendUserMessage(initialPrompt)");
       expect(demo).toContain('pi.sendUserMessage(followupPrompt, { deliverAs: "followUp" })');

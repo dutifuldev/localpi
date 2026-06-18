@@ -96,9 +96,16 @@ export default function localpiDemoMode(pi: ExtensionAPI): void {
     if (!started || stopped || ctx.mode !== "tui") {
       return;
     }
-    if (event.message.role === "assistant" && (event.message.stopReason === "aborted" || event.message.stopReason === "error")) {
-      stopped = true;
+    if (event.message.role !== "assistant") {
       return;
+    }
+    switch (event.message.stopReason) {
+      case "aborted":
+      case "error":
+        stopped = true;
+        return;
+      case "toolUse":
+        return;
     }
     queueMicrotask(() => {
       if (!stopped) {

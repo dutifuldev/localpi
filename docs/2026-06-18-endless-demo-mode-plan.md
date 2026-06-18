@@ -24,6 +24,7 @@ The demo orchestration is owned by a localpi-generated Pi extension. Rendering, 
 - The loop continues until the user exits Pi, `Ctrl-C` is pressed, or Pi stops the session normally.
 - Runtime discovery, Pi config generation, extensions, thinking, tools, and approval behavior match normal localpi launches.
 - Demo mode requires an explicit non-`auto` model through `--model` or `LOCALPI_MODEL`; it must not auto-select a model.
+- Demo mode requires interactive TTY stdin and stdout so Pi opens its normal TUI.
 - Demo mode uses one live Pi session so followup prompts keep the first prompt's context.
 - Demo mode works with any provider localpi already supports: LM Studio, vLLM, generic OpenAI-compatible providers, and managed `llama-server`.
 - Demo mode does not parse terminal output to detect when generation stops; it relies on Pi extension events.
@@ -72,6 +73,7 @@ Reject these combinations with clear errors:
 - `--demo --stop`
 - `--demo --list`
 - `--demo` without an explicit non-`auto` model
+- `--demo` without interactive TTY stdin and stdout
 - `--demo` with user-supplied forwarded Pi prompt flags such as `-p` or `--prompt`
 
 Forwarded non-prompt Pi options should remain allowed.
@@ -98,7 +100,7 @@ The extension owns:
 
 - resolving already-materialized prompt text provided by localpi
 - sending the initial prompt once on `session_start` when `ctx.mode === "tui"`
-- sending the followup prompt after each `turn_end` when demo mode is still active
+- sending the followup prompt after each final assistant `turn_end` when demo mode is still active
 - relying on Pi's own queueing via `pi.sendUserMessage`
 - optional later controls such as `/demo stop`
 
@@ -113,8 +115,18 @@ pi.on("session_start", (event, ctx) => {
   pi.sendUserMessage(initialPrompt);
 });
 
-pi.on("turn_end", (_event, ctx) => {
+pi.on("turn_end", (event, ctx) => {
   if (!started || stopped || ctx.mode !== "tui") {
+    return;
+  }
+  if (event.message.role !== "assistant") {
+    return;
+  }
+  if (event.message.stopReason === "aborted" || event.message.stopReason === "error") {
+    stopped = true;
+    return;
+  }
+  if (event.message.stopReason === "toolUse") {
     return;
   }
   pi.sendUserMessage(followupPrompt, { deliverAs: "followUp" });
@@ -127,6 +139,7 @@ Prompt file loading should stay in localpi before extension generation. The gene
 
 - Pi owns `Ctrl-C`, exit, and interactive lifecycle behavior.
 - If a turn ends with an aborted or error assistant message, the demo extension should stop queueing followup prompts.
+- If a turn ends with tool use, the demo extension should wait for the final assistant turn before queueing a followup.
 - localpi should not restart Pi after exit.
 - If Pi exits non-zero, localpi should return the same exit code as a normal launch.
 - No special signal-forwarding loop should be needed beyond normal `execLaunchPlan` behavior.
@@ -149,10 +162,12 @@ Prompt file loading should stay in localpi before extension generation. The gene
 - [x] Verify prompt files override text prompt values.
 - [x] Verify `--demo --status`, `--demo --stop`, and `--demo --list` fail clearly.
 - [x] Verify demo mode rejects missing or `auto` model selection.
+- [x] Verify demo mode rejects non-TTY stdin/stdout.
 - [x] Verify demo mode rejects forwarded Pi prompt flags.
 - [x] Unit-test that demo mode writes a generated Pi extension.
 - [x] Unit-test that the generated extension sends the initial prompt on TUI `session_start`.
 - [x] Unit-test that the generated extension sends followup prompts after `turn_end`.
+- [x] Unit-test that the generated extension does not queue followups after tool-use continuation turns.
 - [x] Unit-test that demo mode uses the normal Pi launch path and does not pipe prompts over stdin.
 - [x] Unit-test that normal launches are unchanged.
 - [x] Use a fake `LOCALPI_PI_CMD` to prove demo launches Pi once with the demo extension path.

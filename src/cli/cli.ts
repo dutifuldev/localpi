@@ -48,6 +48,7 @@ function validateDemoOptions(options: ParsedOptions): void {
     return;
   }
   validateDemoModel(options);
+  validateDemoTty();
   const incompatibleMode = forwardedIncompatibleMode(options.forwardedArgs);
   if (incompatibleMode !== undefined) {
     throw new Error(
@@ -78,6 +79,14 @@ function validateDemoModel(options: ParsedOptions): void {
   if (options.model === undefined || options.model === "auto") {
     throw new Error(
       "--demo requires an explicit --model <alias|id|path> or LOCALPI_MODEL value; demo mode will not auto-select a model"
+    );
+  }
+}
+
+function validateDemoTty(): void {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error(
+      "--demo requires an interactive TTY on stdin and stdout; run it directly in a terminal"
     );
   }
 }
@@ -305,7 +314,7 @@ function startupModelSelectorOptions(
   options: ParsedOptions,
   connection: Awaited<ReturnType<typeof resolveRuntime>>
 ): { readonly models: readonly { readonly provider: string; readonly id: string }[] } | undefined {
-  if (!process.stdin.isTTY || !process.stderr.isTTY) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
     return undefined;
   }
   if (options.model !== undefined && options.model !== "auto") {
