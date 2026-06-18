@@ -45,6 +45,12 @@ function validateDemoOptions(options: ParsedOptions): void {
     return;
   }
   validateExplicitDemoImmediateOptions(options);
+  const incompatibleMode = forwardedIncompatibleMode(options.forwardedArgs);
+  if (incompatibleMode !== undefined) {
+    throw new Error(
+      `--demo cannot be used with forwarded Pi mode ${incompatibleMode}; demo prompts require text stdin`
+    );
+  }
   const metadataFlag = forwardedMetadataFlag(options.forwardedArgs);
   if (metadataFlag !== undefined) {
     throw new Error(
@@ -63,6 +69,19 @@ function validateDemoOptions(options: ParsedOptions): void {
       `--demo cannot be used with forwarded Pi prompt input ${promptInput}; use --demo-initial-prompt or --demo-followup-prompt`
     );
   }
+}
+
+function forwardedIncompatibleMode(args: readonly string[]): string | undefined {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--mode" && args[index + 1] === "rpc") {
+      return "rpc";
+    }
+    if (arg === "--mode=rpc") {
+      return "rpc";
+    }
+  }
+  return undefined;
 }
 
 function validateExplicitDemoImmediateOptions(options: ParsedOptions): void {

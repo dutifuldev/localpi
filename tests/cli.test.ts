@@ -184,6 +184,22 @@ describe("localpi cli", () => {
     );
   });
 
+  it("rejects forwarded Pi rpc mode in demo mode", async () => {
+    const result = await run(["--demo", "--mode", "rpc"]);
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(
+      "--demo cannot be used with forwarded Pi mode rpc; demo prompts require text stdin"
+    );
+
+    const equals = await run(["--demo", "--mode=rpc"]);
+    expect(equals.code).toBe(2);
+    expect(equals.stdout).toBe("");
+    expect(equals.stderr).toContain(
+      "--demo cannot be used with forwarded Pi mode rpc; demo prompts require text stdin"
+    );
+  });
+
   it("rejects forwarded Pi session flags in demo mode", async () => {
     const result = await run(["--demo", "--session-id", "manual-session"]);
     expect(result.code).toBe(2);
