@@ -150,6 +150,14 @@ describe("localpi cli", () => {
     expect(list.stderr).toContain("--demo cannot be used with --list");
   });
 
+  it("lets immediate localpi commands override demo mode from the environment", async () => {
+    process.env["LOCALPI_DEMO"] = "true";
+    const result = await run(["--stop", "--runtime", "lmstudio"]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe("runtime lmstudio is externally managed; nothing stopped\n");
+    expect(result.stderr).toBe("");
+  });
+
   it("rejects forwarded Pi prompt inputs in demo mode", async () => {
     const result = await run(["--demo", "-p", "say ok"]);
     expect(result.code).toBe(2);

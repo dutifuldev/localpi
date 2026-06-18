@@ -38,6 +38,7 @@ export type LocalpiOptions = {
   readonly approval: boolean;
   readonly tokenStatus: boolean;
   readonly demo: boolean;
+  readonly demoFromCli: boolean;
   readonly demoInitialPrompt: string | undefined;
   readonly demoInitialPromptFile: string | undefined;
   readonly demoFollowupPrompt: string | undefined;
@@ -75,6 +76,7 @@ export function defaultOptions(): LocalpiOptions {
     approval: envBoolean("LOCALPI_APPROVAL", true),
     tokenStatus: envBoolean("LOCALPI_TOKEN_STATUS", true),
     demo: envBoolean("LOCALPI_DEMO", false),
+    demoFromCli: false,
     demoInitialPrompt: process.env["LOCALPI_DEMO_INITIAL_PROMPT"],
     demoInitialPromptFile: process.env["LOCALPI_DEMO_INITIAL_PROMPT_FILE"],
     demoFollowupPrompt: process.env["LOCALPI_DEMO_FOLLOWUP_PROMPT"],
@@ -212,7 +214,7 @@ const booleanFlagUpdaters: Readonly<Record<string, BooleanUpdater>> = {
   "--list": (options) => ({ ...options, list: true }),
   "--no-approval": (options) => ({ ...options, approval: false }),
   "--no-token-status": (options) => ({ ...options, tokenStatus: false }),
-  "--demo": (options) => ({ ...options, demo: true })
+  "--demo": (options) => ({ ...options, demo: true, demoFromCli: true })
 };
 
 type OptionUpdater = (options: LocalpiOptions, value: string) => LocalpiOptions;

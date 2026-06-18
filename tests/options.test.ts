@@ -66,6 +66,7 @@ describe("localpi option parsing", () => {
     expect(parseLocalpiArgs(["--stop"]).stop).toBe(true);
     expect(parseLocalpiArgs(["--list"]).list).toBe(true);
     expect(parseLocalpiArgs(["--demo"]).demo).toBe(true);
+    expect(parseLocalpiArgs(["--demo"]).demoFromCli).toBe(true);
   });
 
   it("parses every value flag", () => {
@@ -213,6 +214,7 @@ describe("localpi environment defaults", () => {
       sessionDir: "/tmp/localpi-env-sessions",
       thinking: "medium",
       demo: true,
+      demoFromCli: false,
       demoInitialPrompt: "env story",
       demoFollowupPrompt: "env again",
       demoInitialPromptFile: "/tmp/env-initial.txt",

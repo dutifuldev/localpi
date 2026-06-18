@@ -44,15 +44,7 @@ function validateDemoOptions(options: ParsedOptions): void {
   if (!options.demo) {
     return;
   }
-  if (options.status) {
-    throw new Error("--demo cannot be used with --status");
-  }
-  if (options.stop) {
-    throw new Error("--demo cannot be used with --stop");
-  }
-  if (options.list) {
-    throw new Error("--demo cannot be used with --list");
-  }
+  validateExplicitDemoImmediateOptions(options);
   const metadataFlag = forwardedMetadataFlag(options.forwardedArgs);
   if (metadataFlag !== undefined) {
     throw new Error(
@@ -70,6 +62,21 @@ function validateDemoOptions(options: ParsedOptions): void {
     throw new Error(
       `--demo cannot be used with forwarded Pi prompt input ${promptInput}; use --demo-initial-prompt or --demo-followup-prompt`
     );
+  }
+}
+
+function validateExplicitDemoImmediateOptions(options: ParsedOptions): void {
+  if (!options.demoFromCli) {
+    return;
+  }
+  if (options.status) {
+    throw new Error("--demo cannot be used with --status");
+  }
+  if (options.stop) {
+    throw new Error("--demo cannot be used with --stop");
+  }
+  if (options.list) {
+    throw new Error("--demo cannot be used with --list");
   }
 }
 

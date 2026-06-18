@@ -122,6 +122,7 @@ function options(stateDir: string): LocalpiOptions {
     approval: true,
     tokenStatus: true,
     demo: false,
+    demoFromCli: false,
     demoInitialPrompt: undefined,
     demoInitialPromptFile: undefined,
     demoFollowupPrompt: undefined,
