@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pi Demo Grid"
+  short_description: "Launch concurrent localpi demo panes"
+  default_prompt: "Use $pi-demo-grid to launch a tmux grid of concurrent localpi demo sessions and report the attach command."
