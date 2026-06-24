@@ -55,6 +55,6 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "pi-factory": "github:dutifuldev/pi-factory#feat/end-to-end-implementation"
+    "pi-factory": "github:dutifuldev/pi-factory#main"
   }
 }
