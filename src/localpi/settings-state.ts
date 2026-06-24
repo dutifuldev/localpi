@@ -8,7 +8,7 @@ export type LocalpiSettings = {
   readonly thinking?: LocalpiOptions["thinking"];
 };
 
-export function settingsStatePath(options: Pick<LocalpiOptions, "stateDir">): string {
+export function localpiSettingsPath(options: Pick<LocalpiOptions, "stateDir">): string {
   return path.join(options.stateDir, "settings.json");
 }
 
@@ -29,7 +29,7 @@ async function readLocalpiSettings(
 ): Promise<LocalpiSettings> {
   let raw: string;
   try {
-    raw = await readFile(settingsStatePath(options), "utf8");
+    raw = await readFile(localpiSettingsPath(options), "utf8");
   } catch (error) {
     if (isMissingFile(error)) {
       return {};

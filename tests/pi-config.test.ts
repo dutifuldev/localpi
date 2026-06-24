@@ -2,20 +2,33 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { writePiRuntimeConfig } from "@dutifuldev/pi-factory";
 import { describe, expect, it } from "vitest";
 
 import type { CatalogModel } from "../src/localpi/catalog.js";
 import type { LocalpiOptions } from "../src/localpi/options.js";
 import type { RuntimeConnection } from "../src/localpi/runtime.js";
-import { writeRuntimeConfig } from "../src/pi/config.js";
+import { createLocalpiAppDefinition } from "../src/pi/app.js";
+import { localpiVersion } from "../src/pi/version.js";
 
 describe("Pi runtime config", () => {
+  it("uses package metadata for the Pi app version", () => {
+    const app = createLocalpiAppDefinition(
+      options("/tmp/localpi-test"),
+      connection("gemma-4-e4b-it", "http://127.0.0.1:1234/v1")
+    );
+
+    expect(app.version).toBe(localpiVersion);
+  });
+
   it("writes a local OpenAI-compatible provider config", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-test-"));
     try {
-      const runtime = await writeRuntimeConfig(
-        options(stateDir),
-        connection("gemma-4-e4b-it", "http://127.0.0.1:1234/v1")
+      const runtime = await writePiRuntimeConfig(
+        createLocalpiAppDefinition(
+          options(stateDir),
+          connection("gemma-4-e4b-it", "http://127.0.0.1:1234/v1")
+        )
       );
       const models = JSON.parse(await readFile(runtime.modelsPath, "utf8")) as {
         providers: Record<string, { baseUrl: string; models: readonly { id: string }[] }>;
@@ -35,9 +48,11 @@ describe("Pi runtime config", () => {
   it("writes context window only from an override or discovered metadata", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-test-"));
     try {
-      const runtime = await writeRuntimeConfig(
-        options(stateDir),
-        connection("gemma-4-e4b-it", "http://127.0.0.1:1234/v1", 120000)
+      const runtime = await writePiRuntimeConfig(
+        createLocalpiAppDefinition(
+          options(stateDir),
+          connection("gemma-4-e4b-it", "http://127.0.0.1:1234/v1", 120000)
+        )
       );
       const models = JSON.parse(await readFile(runtime.modelsPath, "utf8")) as {
         providers: Record<string, { models: readonly { contextWindow?: number }[] }>;
@@ -59,9 +74,11 @@ describe("Pi runtime config", () => {
   it("scales Pi compaction settings below small local context windows", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-test-"));
     try {
-      const runtime = await writeRuntimeConfig(
-        { ...options(stateDir), contextWindow: 4096 },
-        connection("gemma-4-e4b-it", "http://127.0.0.1:1234/v1")
+      const runtime = await writePiRuntimeConfig(
+        createLocalpiAppDefinition(
+          { ...options(stateDir), contextWindow: 4096 },
+          connection("gemma-4-e4b-it", "http://127.0.0.1:1234/v1")
+        )
       );
       const settings = JSON.parse(await readFile(runtime.settingsPath, "utf8")) as {
         compaction?: { enabled?: boolean; reserveTokens?: number; keepRecentTokens?: number };
@@ -79,29 +96,31 @@ describe("Pi runtime config", () => {
   it("writes every loaded catalog provider for Pi model switching", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-test-"));
     try {
-      const runtime = await writeRuntimeConfig(
-        { ...options(stateDir), contextWindow: 4096 },
-        {
-          runtime: "vllm",
-          providerId: "vllm",
-          providerName: "vLLM",
-          baseUrl: "http://127.0.0.1:8000/v1",
-          model: "qwen",
-          availableModels: ["qwen"],
-          catalogModels: [
-            catalogModel("lmstudio", "LM Studio", "http://127.0.0.1:1234/v1", "gemma", 120000),
-            catalogModel(
-              "vllm",
-              "vLLM",
-              "http://127.0.0.1:8000/v1",
-              "qwen",
-              32768,
-              true,
-              "qwen-chat-template"
-            )
-          ],
-          warnings: []
-        }
+      const runtime = await writePiRuntimeConfig(
+        createLocalpiAppDefinition(
+          { ...options(stateDir), contextWindow: 4096 },
+          {
+            runtime: "vllm",
+            providerId: "vllm",
+            providerName: "vLLM",
+            baseUrl: "http://127.0.0.1:8000/v1",
+            model: "qwen",
+            availableModels: ["qwen"],
+            catalogModels: [
+              catalogModel("lmstudio", "LM Studio", "http://127.0.0.1:1234/v1", "gemma", 120000),
+              catalogModel(
+                "vllm",
+                "vLLM",
+                "http://127.0.0.1:8000/v1",
+                "qwen",
+                32768,
+                true,
+                "qwen-chat-template"
+              )
+            ],
+            warnings: []
+          }
+        )
       );
       const models = JSON.parse(await readFile(runtime.modelsPath, "utf8")) as {
         providers: Record<

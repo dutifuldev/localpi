@@ -1,22 +1,22 @@
 import path from "node:path";
 
+import { createPiLaunchPlan, execPiLaunchPlan } from "@dutifuldev/pi-factory";
+import type { PiLaunchPlan, PiRuntimeConfig } from "@dutifuldev/pi-factory";
 import { describe, expect, it } from "vitest";
 
 import type { LocalpiOptions } from "../src/localpi/options.js";
 import type { RuntimeConnection } from "../src/localpi/runtime.js";
-import type { RuntimeConfig } from "../src/pi/config.js";
-import { createLaunchPlan, execLaunchPlan } from "../src/pi/launch.js";
+import { createLocalpiAppDefinition } from "../src/pi/app.js";
 
 describe("Pi launch plan", () => {
   it("adds localpi extensions, system prompt, and default tools", async () => {
-    const plan = await createLaunchPlan(
-      options("/tmp/localpi-state"),
-      runtimeConfig("/tmp/localpi-state"),
-      connection("gemma-4-e4b-it"),
-      {
+    const stateDir = "/tmp/localpi-state";
+    const plan = await createPiLaunchPlan(
+      createLocalpiAppDefinition(options(stateDir), connection("gemma-4-e4b-it"), {
         paths: ["/tmp/localpi-state/pi-extensions/tool-approval.ts"],
         systemPrompt: "localpi prompt"
-      }
+      }),
+      runtimeConfig(stateDir)
     );
 
     expect(plan.args).toEqual([
@@ -38,11 +38,14 @@ describe("Pi launch plan", () => {
   });
 
   it("does not add default tools when the user passes an explicit tool flag", async () => {
-    const plan = await createLaunchPlan(
-      { ...options("/tmp/localpi-state"), forwardedArgs: ["--tools", "bash", "-p", "say ok"] },
-      runtimeConfig("/tmp/localpi-state"),
-      connection("gemma-4-e4b-it"),
-      { paths: [], systemPrompt: "localpi prompt" }
+    const stateDir = "/tmp/localpi-state";
+    const plan = await createPiLaunchPlan(
+      createLocalpiAppDefinition(
+        { ...options(stateDir), forwardedArgs: ["--tools", "bash", "-p", "say ok"] },
+        connection("gemma-4-e4b-it"),
+        { paths: [], systemPrompt: "localpi prompt" }
+      ),
+      runtimeConfig(stateDir)
     );
 
     expect(plan.args).toContain("--tools");
@@ -50,15 +53,51 @@ describe("Pi launch plan", () => {
     expect(plan.args).toContain("bash");
   });
 
-  it("runs the plan through a shell and reports the exit code", async () => {
+  it("executes the pi-factory launch plan and reports the exit code", async () => {
     await expect(
-      execLaunchPlan({ command: "sh -c 'exit 0' --", args: ["quoted 'arg'"], env: {} })
+      execPiLaunchPlan(executablePlan({ command: "sh", args: ["-c", "exit 0", "--"] }))
     ).resolves.toBe(0);
     await expect(
-      execLaunchPlan({ command: "sh -c 'exit 7' --", args: [], env: { LOCALPI_TEST: "1" } })
+      execPiLaunchPlan(executablePlan({ command: "sh", args: ["-c", "exit 7", "--"] }))
     ).resolves.toBe(7);
+    await expect(
+      execPiLaunchPlan(
+        executablePlan({
+          command: "sh",
+          args: ["-c", 'test "$LOCALPI_TEST" = ok', "--"],
+          env: { LOCALPI_TEST: "ok" }
+        })
+      )
+    ).resolves.toBe(0);
+  });
+
+  it("preserves shell-style pi command values", async () => {
+    await expect(
+      execPiLaunchPlan(
+        executablePlan({
+          command: "LOCALPI_TEST=ok sh -c 'test \"$LOCALPI_TEST\" = ok' --",
+          args: []
+        })
+      )
+    ).resolves.toBe(0);
   });
 });
+
+function executablePlan(input: {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+}): PiLaunchPlan {
+  return {
+    appId: "localpi",
+    appName: "localpi",
+    command: input.command,
+    args: input.args,
+    env: input.env ?? {},
+    runtimeConfig: runtimeConfig("/tmp/localpi-state"),
+    warnings: []
+  };
+}
 
 function options(stateDir: string): LocalpiOptions {
   return {
@@ -113,7 +152,7 @@ function connection(model: string): RuntimeConnection {
   };
 }
 
-function runtimeConfig(stateDir: string): RuntimeConfig {
+function runtimeConfig(stateDir: string): PiRuntimeConfig {
   return {
     configDir: path.join(stateDir, "pi"),
     modelsPath: path.join(stateDir, "pi", "models.json"),
