@@ -2,13 +2,13 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { writePiRuntimeConfig } from "@dutifuldev/pi-factory";
 import { describe, expect, it } from "vitest";
 
 import type { CatalogModel } from "../src/localpi/catalog.js";
 import type { LocalpiOptions } from "../src/localpi/options.js";
 import type { RuntimeConnection } from "../src/localpi/runtime.js";
 import { createLocalpiAppDefinition } from "../src/pi/app.js";
-import { writeRuntimeConfig } from "../src/pi/config.js";
 import { localpiVersion } from "../src/pi/version.js";
 
 describe("Pi runtime config", () => {
@@ -24,7 +24,7 @@ describe("Pi runtime config", () => {
   it("writes a local OpenAI-compatible provider config", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-test-"));
     try {
-      const runtime = await writeRuntimeConfig(
+      const runtime = await writePiRuntimeConfig(
         createLocalpiAppDefinition(
           options(stateDir),
           connection("gemma-4-e4b-it", "http://127.0.0.1:1234/v1")
@@ -48,7 +48,7 @@ describe("Pi runtime config", () => {
   it("writes context window only from an override or discovered metadata", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-test-"));
     try {
-      const runtime = await writeRuntimeConfig(
+      const runtime = await writePiRuntimeConfig(
         createLocalpiAppDefinition(
           options(stateDir),
           connection("gemma-4-e4b-it", "http://127.0.0.1:1234/v1", 120000)
@@ -74,7 +74,7 @@ describe("Pi runtime config", () => {
   it("scales Pi compaction settings below small local context windows", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-test-"));
     try {
-      const runtime = await writeRuntimeConfig(
+      const runtime = await writePiRuntimeConfig(
         createLocalpiAppDefinition(
           { ...options(stateDir), contextWindow: 4096 },
           connection("gemma-4-e4b-it", "http://127.0.0.1:1234/v1")
@@ -96,7 +96,7 @@ describe("Pi runtime config", () => {
   it("writes every loaded catalog provider for Pi model switching", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "localpi-test-"));
     try {
-      const runtime = await writeRuntimeConfig(
+      const runtime = await writePiRuntimeConfig(
         createLocalpiAppDefinition(
           { ...options(stateDir), contextWindow: 4096 },
           {

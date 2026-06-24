@@ -1,18 +1,17 @@
 import path from "node:path";
 
+import { createPiLaunchPlan, execPiLaunchPlan } from "@dutifuldev/pi-factory";
+import type { PiLaunchPlan, PiRuntimeConfig } from "@dutifuldev/pi-factory";
 import { describe, expect, it } from "vitest";
 
 import type { LocalpiOptions } from "../src/localpi/options.js";
 import type { RuntimeConnection } from "../src/localpi/runtime.js";
 import { createLocalpiAppDefinition } from "../src/pi/app.js";
-import type { RuntimeConfig } from "../src/pi/config.js";
-import { createLaunchPlan, execLaunchPlan } from "../src/pi/launch.js";
-import type { LaunchPlan } from "../src/pi/launch.js";
 
 describe("Pi launch plan", () => {
   it("adds localpi extensions, system prompt, and default tools", async () => {
     const stateDir = "/tmp/localpi-state";
-    const plan = await createLaunchPlan(
+    const plan = await createPiLaunchPlan(
       createLocalpiAppDefinition(options(stateDir), connection("gemma-4-e4b-it"), {
         paths: ["/tmp/localpi-state/pi-extensions/tool-approval.ts"],
         systemPrompt: "localpi prompt"
@@ -40,7 +39,7 @@ describe("Pi launch plan", () => {
 
   it("does not add default tools when the user passes an explicit tool flag", async () => {
     const stateDir = "/tmp/localpi-state";
-    const plan = await createLaunchPlan(
+    const plan = await createPiLaunchPlan(
       createLocalpiAppDefinition(
         { ...options(stateDir), forwardedArgs: ["--tools", "bash", "-p", "say ok"] },
         connection("gemma-4-e4b-it"),
@@ -56,13 +55,13 @@ describe("Pi launch plan", () => {
 
   it("executes the pi-factory launch plan and reports the exit code", async () => {
     await expect(
-      execLaunchPlan(executablePlan({ command: "sh", args: ["-c", "exit 0", "--"] }))
+      execPiLaunchPlan(executablePlan({ command: "sh", args: ["-c", "exit 0", "--"] }))
     ).resolves.toBe(0);
     await expect(
-      execLaunchPlan(executablePlan({ command: "sh", args: ["-c", "exit 7", "--"] }))
+      execPiLaunchPlan(executablePlan({ command: "sh", args: ["-c", "exit 7", "--"] }))
     ).resolves.toBe(7);
     await expect(
-      execLaunchPlan(
+      execPiLaunchPlan(
         executablePlan({
           command: "sh",
           args: ["-c", 'test "$LOCALPI_TEST" = ok', "--"],
@@ -74,7 +73,7 @@ describe("Pi launch plan", () => {
 
   it("preserves shell-style pi command values", async () => {
     await expect(
-      execLaunchPlan(
+      execPiLaunchPlan(
         executablePlan({
           command: "LOCALPI_TEST=ok sh -c 'test \"$LOCALPI_TEST\" = ok' --",
           args: []
@@ -88,7 +87,7 @@ function executablePlan(input: {
   readonly command: string;
   readonly args: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
-}): LaunchPlan {
+}): PiLaunchPlan {
   return {
     appId: "localpi",
     appName: "localpi",
@@ -153,7 +152,7 @@ function connection(model: string): RuntimeConnection {
   };
 }
 
-function runtimeConfig(stateDir: string): RuntimeConfig {
+function runtimeConfig(stateDir: string): PiRuntimeConfig {
   return {
     configDir: path.join(stateDir, "pi"),
     modelsPath: path.join(stateDir, "pi", "models.json"),

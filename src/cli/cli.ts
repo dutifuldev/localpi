@@ -1,3 +1,5 @@
+import { runPiApp } from "@dutifuldev/pi-factory";
+
 import { errorMessage, fail, ok, type CommandResult } from "../common/result.js";
 import { parseLocalpiArgs, usage } from "../localpi/options.js";
 import {
@@ -9,9 +11,7 @@ import {
 } from "../localpi/runtime.js";
 import { applyRememberedSettings } from "../localpi/settings-state.js";
 import { createLocalpiAppDefinition } from "../pi/app.js";
-import { writeRuntimeConfig } from "../pi/config.js";
 import { writeDefaultExtensions } from "../pi/extensions.js";
-import { createLaunchPlan, execLaunchPlan } from "../pi/launch.js";
 
 export async function run(args: readonly string[]): Promise<CommandResult> {
   try {
@@ -36,8 +36,7 @@ export async function run(args: readonly string[]): Promise<CommandResult> {
       selectorOptions === undefined ? {} : { startupModelSelector: selectorOptions }
     );
     const app = createLocalpiAppDefinition(options, connection, extensions);
-    const runtimeConfig = await writeRuntimeConfig(app);
-    return await launchResolvedRuntime(app, runtimeConfig, connection);
+    return await launchResolvedRuntime(app, connection);
   } catch (error) {
     return fail(`localpi: ${errorMessage(error)}`);
   }
@@ -301,10 +300,9 @@ function isPiUnknownLongFlagNextValue(arg: string | undefined): boolean {
 
 async function launchResolvedRuntime(
   app: ReturnType<typeof createLocalpiAppDefinition>,
-  runtimeConfig: Awaited<ReturnType<typeof writeRuntimeConfig>>,
   connection: Awaited<ReturnType<typeof resolveRuntime>>
 ): Promise<CommandResult> {
-  const code = await execLaunchPlan(await createLaunchPlan(app, runtimeConfig));
+  const code = await runPiApp(app);
   if (code !== 0) {
     return { code, stdout: "", stderr: "" };
   }
