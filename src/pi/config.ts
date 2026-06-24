@@ -1,15 +1,8 @@
 import { writePiRuntimeConfig } from "@dutifuldev/pi-factory";
-import type { PiRuntimeConfig } from "@dutifuldev/pi-factory";
-
-import type { LocalpiOptions } from "../localpi/options.js";
-import type { RuntimeConnection } from "../localpi/runtime.js";
-import { createLocalpiAppDefinition } from "./app.js";
+import type { PiAppDefinition, PiRuntimeConfig } from "@dutifuldev/pi-factory";
 
 export type RuntimeConfig = PiRuntimeConfig;
 
-export async function writeRuntimeConfig(
-  options: LocalpiOptions,
-  connection: RuntimeConnection
-): Promise<RuntimeConfig> {
-  return await writePiRuntimeConfig(createLocalpiAppDefinition(options, connection));
+export async function writeRuntimeConfig(app: PiAppDefinition): Promise<RuntimeConfig> {
+  return await writePiRuntimeConfig(app);
 }

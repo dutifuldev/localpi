@@ -1,6 +1,5 @@
 import type {
   PiAppDefinition,
-  PiExtensionDefinition,
   PiModelDefinition,
   PiProviderDefinition
 } from "@dutifuldev/pi-factory";
@@ -8,29 +7,64 @@ import type {
 import type { CatalogModel } from "../localpi/catalog.js";
 import type { LocalpiOptions } from "../localpi/options.js";
 import type { RuntimeConnection } from "../localpi/runtime.js";
+import { localpiVersion } from "../version.js";
 import type { ExtensionBundle } from "./extensions.js";
+
+type LocalpiAppIdentity = Pick<PiAppDefinition, "id" | "name" | "version">;
+type LocalpiAppDirectories = Pick<PiAppDefinition, "stateDir" | "sessionDir">;
+type LocalpiPiCommand = Pick<PiAppDefinition, "piCommand" | "forwardedArgs">;
+type LocalpiRuntimeSelection = Pick<
+  PiAppDefinition,
+  "providers" | "defaultProvider" | "defaultModel" | "thinking"
+> &
+  Partial<Pick<PiAppDefinition, "tools">>;
+type LocalpiExtensionConfig = Partial<Pick<PiAppDefinition, "extensions" | "appendSystemPrompts">>;
+
+const localpiAppIdentity: LocalpiAppIdentity = {
+  id: "localpi",
+  name: "localpi",
+  version: localpiVersion
+};
 
 export function createLocalpiAppDefinition(
   options: LocalpiOptions,
   connection: RuntimeConnection,
   extensions?: ExtensionBundle
 ): PiAppDefinition {
-  const providers = providersForConnection(options, connection);
   return {
-    id: "localpi",
-    name: "localpi",
-    version: "0.3.0",
+    ...localpiAppIdentity,
+    ...appDirectories(options),
+    ...piCommand(options),
+    ...runtimeSelection(options, connection),
+    ...extensionConfig(extensions)
+  };
+}
+
+function appDirectories(options: LocalpiOptions): LocalpiAppDirectories {
+  return {
     stateDir: options.stateDir,
-    sessionDir: options.sessionDir,
+    sessionDir: options.sessionDir
+  };
+}
+
+function piCommand(options: LocalpiOptions): LocalpiPiCommand {
+  return {
     piCommand: options.piCommand,
-    providers,
-    defaultProvider: connection.providerId,
-    defaultModel: connection.model,
-    thinking: options.thinking,
-    ...(options.tools === undefined ? {} : { tools: options.tools }),
-    ...(extensions === undefined ? {} : extensionDefinition(extensions)),
     forwardedArgs: options.forwardedArgs
   };
+}
+
+function runtimeSelection(
+  options: LocalpiOptions,
+  connection: RuntimeConnection
+): LocalpiRuntimeSelection {
+  const selection = {
+    providers: providersForConnection(options, connection),
+    defaultProvider: connection.providerId,
+    defaultModel: connection.model,
+    thinking: options.thinking
+  };
+  return options.tools === undefined ? selection : { ...selection, tools: options.tools };
 }
 
 function providersForConnection(
@@ -114,10 +148,10 @@ function fallbackCatalog(connection: RuntimeConnection): readonly CatalogModel[]
   ];
 }
 
-function extensionDefinition(extensions: ExtensionBundle): {
-  readonly extensions: readonly PiExtensionDefinition[];
-  readonly appendSystemPrompts: readonly string[];
-} {
+function extensionConfig(extensions: ExtensionBundle | undefined): LocalpiExtensionConfig {
+  if (extensions === undefined) {
+    return {};
+  }
   return {
     extensions: extensions.paths.map((extensionPath) => ({ path: extensionPath })),
     appendSystemPrompts: [extensions.systemPrompt]
