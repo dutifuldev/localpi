@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import type { StdioOptions } from "node:child_process";
 import { mkdir } from "node:fs/promises";
-import { createPiLaunchPlan } from "pi-factory";
-import type { PiLaunchPlan } from "pi-factory";
+import { createPiLaunchPlan } from "@dutifuldev/pi-factory";
+import type { PiLaunchPlan } from "@dutifuldev/pi-factory";
 
 import type { LocalpiOptions } from "../localpi/options.js";
 import type { RuntimeConnection } from "../localpi/runtime.js";

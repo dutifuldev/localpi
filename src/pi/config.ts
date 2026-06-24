@@ -1,5 +1,5 @@
-import { writePiRuntimeConfig } from "pi-factory";
-import type { PiRuntimeConfig } from "pi-factory";
+import { writePiRuntimeConfig } from "@dutifuldev/pi-factory";
+import type { PiRuntimeConfig } from "@dutifuldev/pi-factory";
 
 import type { LocalpiOptions } from "../localpi/options.js";
 import type { RuntimeConnection } from "../localpi/runtime.js";

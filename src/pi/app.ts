@@ -3,7 +3,7 @@ import type {
   PiExtensionDefinition,
   PiModelDefinition,
   PiProviderDefinition
-} from "pi-factory";
+} from "@dutifuldev/pi-factory";
 
 import type { CatalogModel } from "../localpi/catalog.js";
 import type { LocalpiOptions } from "../localpi/options.js";

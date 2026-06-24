@@ -55,6 +55,6 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "pi-factory": "github:dutifuldev/pi-factory#main"
+    "@dutifuldev/pi-factory": "^0.1.0"
   }
 }
