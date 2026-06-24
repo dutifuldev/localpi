@@ -14,7 +14,7 @@ if (typeof packageMetadata.version !== "string") {
 export const localpiVersion = packageMetadata.version;
 
 function loadPackageMetadata(): PackageMetadata {
-  for (const packagePath of ["../package.json", "../../package.json"]) {
+  for (const packagePath of ["../../package.json", "../../../package.json"]) {
     try {
       return require(packagePath) as PackageMetadata;
     } catch (error) {

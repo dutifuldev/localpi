@@ -7,8 +7,8 @@ import type {
 import type { CatalogModel } from "../localpi/catalog.js";
 import type { LocalpiOptions } from "../localpi/options.js";
 import type { RuntimeConnection } from "../localpi/runtime.js";
-import { localpiVersion } from "../version.js";
 import type { ExtensionBundle } from "./extensions.js";
+import { localpiVersion } from "./version.js";
 
 type LocalpiAppIdentity = Pick<PiAppDefinition, "id" | "name" | "version">;
 type LocalpiAppDirectories = Pick<PiAppDefinition, "stateDir" | "sessionDir">;

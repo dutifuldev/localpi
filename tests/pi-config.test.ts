@@ -9,7 +9,7 @@ import type { LocalpiOptions } from "../src/localpi/options.js";
 import type { RuntimeConnection } from "../src/localpi/runtime.js";
 import { createLocalpiAppDefinition } from "../src/pi/app.js";
 import { writeRuntimeConfig } from "../src/pi/config.js";
-import { localpiVersion } from "../src/version.js";
+import { localpiVersion } from "../src/pi/version.js";
 
 describe("Pi runtime config", () => {
   it("uses package metadata for the Pi app version", () => {
