@@ -30,6 +30,7 @@ describe("Pi extensions", () => {
       expect(status).toContain("firstOutputAt");
       expect(status).toContain("generationElapsed");
       expect(status).toContain("prefillTokenCount");
+      expect(status).toContain("input + cacheWrite");
       expect(status).toContain("prefill ");
       expect(status).toContain("gen ");
       expect(status).toContain("outputText += update.text");

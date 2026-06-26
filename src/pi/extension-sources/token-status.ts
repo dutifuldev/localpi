@@ -73,7 +73,7 @@ export default function localpiTokenStatus(pi: ExtensionAPI): void {
     const now = Date.now();
     const elapsedSeconds = elapsed(state, now);
     const decodeSeconds = generationElapsed(state, now);
-    const prefillText = prefillStatusText(state, input, cacheRead, cacheWrite);
+    const prefillText = prefillStatusText(state, input, cacheWrite);
     const context = ctx.getContextUsage();
     const contextText =
       context && context.percent !== null
@@ -125,22 +125,18 @@ function statusText(state: TurnState, now: number): string {
 function prefillStatusText(
   state: TurnState,
   input: number,
-  cacheRead: number,
   cacheWrite: number
 ): string | undefined {
-  if (state.firstOutputAt === undefined || input <= 0) {
+  const tokens = prefillTokenCount(input, cacheWrite);
+  if (state.firstOutputAt === undefined || tokens <= 0) {
     return undefined;
   }
-  const tokens = prefillTokenCount(input, cacheRead, cacheWrite);
   const seconds = secondsBetween(state.startedAt, state.firstOutputAt);
   return \`prefill \${(tokens / seconds).toFixed(1)} tok/s\`;
 }
 
-function prefillTokenCount(input: number, cacheRead: number, cacheWrite: number): number {
-  if (cacheWrite > 0) {
-    return cacheWrite;
-  }
-  return Math.max(input - cacheRead, 0);
+function prefillTokenCount(input: number, cacheWrite: number): number {
+  return Math.max(input + cacheWrite, 0);
 }
 
 function generationElapsed(state: TurnState, now: number): number {
