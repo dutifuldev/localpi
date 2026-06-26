@@ -1,6 +1,6 @@
 # AGENTS.md - localpi
 
-This repository is a TypeScript CLI that runs Pi against a local OpenAI-compatible model.
+This repository is a TypeScript CLI that runs Pi against local inference engines.
 
 Before finishing code changes, run:
 

@@ -1,10 +1,10 @@
 # localpi
 
-Localpi is a local Pi launcher for open-weight models.
+Localpi is a Swiss army knife for running Pi with local inference engines.
 
 By default, Localpi discovers available local providers, lets you choose when more than one model is loaded, points Pi at the selected model, and writes Pi config for the other discovered models so `/model` can switch among them during the session.
 
-Localpi supports LM Studio, vLLM, custom OpenAI-compatible servers, and an optional managed `llama-server` fallback.
+Localpi is meant to be the practical bridge from Pi to local inference stacks such as llama.cpp/`llama-server`, vLLM, SGLang, LM Studio, Ollama, and custom provider endpoints.
 
 Localpi is intentionally generic. It does not contain classifier prompts, dataset workflows, GitHub routing logic, or final-schema output machinery. Structured classifier runs belong in caller tools such as `localpager-agent`.
 
