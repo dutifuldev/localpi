@@ -445,8 +445,7 @@ describe("localpi cli", () => {
       "--session-dir",
       path.join(stateDir, "sessions"),
       "--pi-command",
-      `node ${scriptPath}`,
-      "--no-tools"
+      `node ${scriptPath}`
     ]);
 
     expect(result).toEqual({ code: 0, stdout: "", stderr: "" });
@@ -454,9 +453,11 @@ describe("localpi cli", () => {
       readonly args: readonly string[];
     };
     expect(record.args).toContain("--no-tools");
+    expect(record.args).toContain("--no-approve");
     expect(record.args).not.toContain("-p");
     expect(record.args).not.toContain("--prompt");
     expect(record.args).not.toContain("--session-id");
+    expect(record.args).not.toContain("--tools");
     const extensionArgs = extensionPaths(record.args);
     const demoPath = extensionArgs.find(
       (extensionPath) => path.basename(extensionPath) === "demo-mode.ts"

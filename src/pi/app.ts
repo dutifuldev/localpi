@@ -26,6 +26,20 @@ const localpiAppIdentity: LocalpiAppIdentity = {
   version: localpiVersion
 };
 
+const demoLaunchOverrideBooleanFlags = new Set([
+  "--no-tools",
+  "-nt",
+  "--no-builtin-tools",
+  "-nbt",
+  "--approve",
+  "-a",
+  "--no-approve",
+  "-na"
+]);
+
+const demoLaunchOverrideValueFlags = new Set(["--tools", "-t", "--exclude-tools", "-xt"]);
+const demoLaunchOverrideEqualsFlags = ["--tools=", "--exclude-tools="] as const;
+
 export function createLocalpiAppDefinition(
   options: LocalpiOptions,
   connection: RuntimeConnection,
@@ -50,8 +64,42 @@ function appDirectories(options: LocalpiOptions): LocalpiAppDirectories {
 function piCommand(options: LocalpiOptions): LocalpiPiCommand {
   return {
     piCommand: options.piCommand,
-    forwardedArgs: options.forwardedArgs
+    forwardedArgs: options.demo ? demoForwardedArgs(options.forwardedArgs) : options.forwardedArgs
   };
+}
+
+function demoForwardedArgs(args: readonly string[]): readonly string[] {
+  return [...withoutConflictingDemoFlags(args), "--no-tools", "--no-approve"];
+}
+
+function withoutConflictingDemoFlags(args: readonly string[]): readonly string[] {
+  const filtered: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === undefined) {
+      continue;
+    }
+    if (isDemoLaunchOverrideFlag(arg)) {
+      if (isValueFlag(arg) && !arg.includes("=")) {
+        index += 1;
+      }
+      continue;
+    }
+    filtered.push(arg);
+  }
+  return filtered;
+}
+
+function isDemoLaunchOverrideFlag(arg: string): boolean {
+  return (
+    demoLaunchOverrideBooleanFlags.has(arg) ||
+    isValueFlag(arg) ||
+    demoLaunchOverrideEqualsFlags.some((flag) => arg.startsWith(flag))
+  );
+}
+
+function isValueFlag(arg: string): boolean {
+  return demoLaunchOverrideValueFlags.has(arg);
 }
 
 function runtimeSelection(

@@ -53,6 +53,30 @@ describe("Pi launch plan", () => {
     expect(plan.args).toContain("bash");
   });
 
+  it("forces demo launches to disable tools and skip project trust prompts", async () => {
+    const stateDir = "/tmp/localpi-state";
+    const plan = await createPiLaunchPlan(
+      createLocalpiAppDefinition(
+        {
+          ...options(stateDir),
+          demo: true,
+          forwardedArgs: ["--tools", "bash", "--exclude-tools=write", "--approve", "--verbose"]
+        },
+        connection("gemma-4-e4b-it"),
+        { paths: [], systemPrompt: "localpi prompt" }
+      ),
+      runtimeConfig(stateDir)
+    );
+
+    expect(plan.args).toContain("--no-tools");
+    expect(plan.args).toContain("--no-approve");
+    expect(plan.args).toContain("--verbose");
+    expect(plan.args).not.toContain("--tools");
+    expect(plan.args).not.toContain("bash");
+    expect(plan.args).not.toContain("--exclude-tools=write");
+    expect(plan.args).not.toContain("--approve");
+  });
+
   it("executes the pi-factory launch plan and reports the exit code", async () => {
     await expect(
       execPiLaunchPlan(executablePlan({ command: "sh", args: ["-c", "exit 0", "--"] }))
